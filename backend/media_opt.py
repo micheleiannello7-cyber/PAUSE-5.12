@@ -32,10 +32,12 @@ def encode_webp(raw: bytes, max_side: int) -> bytes:
 def cutout_png(raw: bytes) -> bytes:
     """Oggetto 3D su sfondo nero → PNG RGBA con lo sfondo reso trasparente
     (stesso keying delle icone CTA), per usarlo sopra superfici colorate."""
-    from generate_cta_icons import key_out_background
+    from generate_cta_icons import fit_square, key_out_background
     image = ImageOps.exif_transpose(Image.open(io.BytesIO(raw))).convert("RGB")
     out = io.BytesIO()
-    key_out_background(image).save(out, "PNG", optimize=True)
+    # Ritaglio stretto sull'oggetto (stesso margine delle icone CTA), così
+    # occupa lo stesso spazio delle altre icone 3D.
+    fit_square(key_out_background(image), size=320).save(out, "PNG", optimize=True)
     return out.getvalue()
 
 

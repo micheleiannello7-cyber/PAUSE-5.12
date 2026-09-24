@@ -76,7 +76,7 @@ export function categoryArtworkUrl(id: string, version: string, cutout = false):
   // Content-addressed artwork + a shared delivery revision reset any old
   // cached image/failure state when moving to the new sculptural 3D family.
   // `cutout` = solo l'oggetto 3D, senza lo sfondo nero dello studio.
-  return `${BASE}/api/category-media/${encodeURIComponent(id)}?v=${encodeURIComponent(version)}&delivery=colorful-3d-v3${cutout ? "&cutout=true" : ""}`;
+  return `${BASE}/api/category-media/${encodeURIComponent(id)}?v=${encodeURIComponent(version)}&delivery=colorful-3d-v3${cutout ? "&cutout=true&cut=2" : ""}`;
 }
 
 export type Chapter = {

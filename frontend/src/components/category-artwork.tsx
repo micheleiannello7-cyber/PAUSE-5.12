@@ -50,7 +50,7 @@ function Artwork({ category, uri, testID, wide = false, compact = false, cornerR
 }
 
 const useStyles = makeStyles((colors) => ({
-  fill: { ...StyleSheet.absoluteFillObject, backgroundColor: colors.artworkSurface, overflow: "hidden", pointerEvents: "none" },
+  fill: { position: "absolute", top: 0, left: 0, right: 0, bottom: 0, backgroundColor: colors.artworkSurface, overflow: "hidden", pointerEvents: "none" },
   image: { position: "absolute", top: -2, left: "5%", width: "90%", aspectRatio: 1 },
   compactImage: { top: 4, left: "15%", width: "70%" },
   bannerImage: { position: "absolute", top: -9, right: 0, width: 106, height: 106 },
