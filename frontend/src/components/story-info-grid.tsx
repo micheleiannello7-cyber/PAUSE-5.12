@@ -3,8 +3,8 @@
 // stesso linguaggio delle icone categoria: oggetto tridimensionale grande su un
 // alone colorato, tessera in vetro con bordo luminoso e riflesso in alto.
 import { View, Text, StyleSheet } from "react-native";
+import { Image } from "expo-image";
 import { LinearGradient } from "expo-linear-gradient";
-import Svg, { Circle, Defs, Ellipse, Line, RadialGradient, Stop } from "react-native-svg";
 
 import { StoryPreview, isLesson } from "@/src/api";
 import { makeStyles, spacing, typography, useTheme, withAlpha } from "@/src/theme";
@@ -13,6 +13,8 @@ import { KindIcon } from "./kind-icon";
 import { CategoryArtMark } from "./category-artwork";
 
 const ICON = 46;
+// Orologio 3D generato nello stesso stile delle icone categoria e dei CTA.
+const CLOCK = require("../../assets/images/kind-clock.png");
 
 export function StoryInfoGrid({ story, minutes, testID = "story-info-grid" }: { story: StoryPreview; minutes: number; testID?: string }) {
   const styles = useStyles();
@@ -26,7 +28,7 @@ export function StoryInfoGrid({ story, minutes, testID = "story-info-grid" }: { 
     { id: "category", label: t.info_category, value: category, tint: story.category_color,
       icon: <CategoryArtMark categoryId={story.category_id} color={story.category_color} size={ICON} testID={`${testID}-category-icon`} /> },
     { id: "time", label: t.info_time, value: `${minutes} ${t.min}`, tint: colors.brandSecondary,
-      icon: <ClockMark size={ICON} body={colors.brandSecondary} hands={colors.cyan} face={colors.textWarm} /> },
+      icon: <Image source={CLOCK} style={{ width: ICON + 2, height: ICON + 2 }} contentFit="contain" transition={0} testID={`${testID}-time-icon`} /> },
   ];
   return (
     <View style={styles.grid} testID={testID}>
@@ -52,42 +54,6 @@ export function StoryInfoGrid({ story, minutes, testID = "story-info-grid" }: { 
         </View>
       ))}
     </View>
-  );
-}
-
-// Orologio "clay 3D" in vettoriale: corpo tondo con luce da in alto a sinistra,
-// quadrante chiaro leggermente incassato, lancette spesse, bottoncino in alto.
-function ClockMark({ size, body, hands, face }: { size: number; body: string; hands: string; face: string }) {
-  const c = size / 2;
-  const r = size * 0.42;
-  return (
-    <Svg width={size} height={size} viewBox={`0 0 ${size} ${size}`}>
-      <Defs>
-        <RadialGradient id="clockBody" cx="35%" cy="30%" r="80%">
-          <Stop offset="0" stopColor={withAlpha("#FFFFFF", 0.55)} />
-          <Stop offset="0.35" stopColor={body} />
-          <Stop offset="1" stopColor={withAlpha("#000000", 0.35)} />
-        </RadialGradient>
-        <RadialGradient id="clockFace" cx="45%" cy="40%" r="70%">
-          <Stop offset="0" stopColor={face} />
-          <Stop offset="1" stopColor={withAlpha(face, 0.72)} />
-        </RadialGradient>
-      </Defs>
-      {/* ombra a terra */}
-      <Ellipse cx={c} cy={size * 0.93} rx={r * 0.7} ry={r * 0.14} fill={withAlpha("#000000", 0.35)} />
-      {/* bottoncino */}
-      <Circle cx={c} cy={size * 0.12} r={size * 0.075} fill={body} />
-      <Circle cx={c - size * 0.02} cy={size * 0.105} r={size * 0.035} fill={withAlpha("#FFFFFF", 0.5)} />
-      {/* corpo */}
-      <Circle cx={c} cy={c + size * 0.03} r={r} fill={body} />
-      <Circle cx={c} cy={c + size * 0.03} r={r} fill="url(#clockBody)" />
-      {/* quadrante */}
-      <Circle cx={c} cy={c + size * 0.03} r={r * 0.68} fill="url(#clockFace)" />
-      {/* lancette */}
-      <Line x1={c} y1={c + size * 0.03} x2={c} y2={c - r * 0.42} stroke={hands} strokeWidth={size * 0.075} strokeLinecap="round" />
-      <Line x1={c} y1={c + size * 0.03} x2={c + r * 0.36} y2={c + size * 0.03 + r * 0.12} stroke={hands} strokeWidth={size * 0.075} strokeLinecap="round" />
-      <Circle cx={c} cy={c + size * 0.03} r={size * 0.045} fill={hands} />
-    </Svg>
   );
 }
 
