@@ -72,10 +72,11 @@ export function categoryIllustrationUrl(cat: Pick<Category, "id" | "illustration
   return categoryArtworkUrl(cat.id, cat.illustration_generated);
 }
 
-export function categoryArtworkUrl(id: string, version: string): string {
+export function categoryArtworkUrl(id: string, version: string, cutout = false): string {
   // Content-addressed artwork + a shared delivery revision reset any old
   // cached image/failure state when moving to the new sculptural 3D family.
-  return `${BASE}/api/category-media/${encodeURIComponent(id)}?v=${encodeURIComponent(version)}&delivery=colorful-3d-v3`;
+  // `cutout` = solo l'oggetto 3D, senza lo sfondo nero dello studio.
+  return `${BASE}/api/category-media/${encodeURIComponent(id)}?v=${encodeURIComponent(version)}&delivery=colorful-3d-v3${cutout ? "&cutout=true" : ""}`;
 }
 
 export type Chapter = {

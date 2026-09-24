@@ -1230,16 +1230,21 @@ async def media_for_story(request: Request, story_id: str, size: str = Query("he
 
 
 @api_router.get("/category-media/{category_id}")
-async def media_for_category(request: Request, category_id: str):
-    """Serve the illustration for a category."""
+async def media_for_category(request: Request, category_id: str, cutout: bool = False):
+    """Serve the illustration for a category. `cutout=true` returns the object
+    alone (black studio background keyed out, PNG RGBA), for tinted surfaces."""
     collection = db.design_assets if category_id == "all" else db.categories
     asset_id = "category-all" if category_id == "all" else category_id
     doc = await collection.find_one({"id": asset_id}, {"_id": 0, "illustration_generated": 1})
     if not doc or not doc.get("illustration_generated"):
         raise HTTPException(404, "No generated image")
     path = doc["illustration_generated"]
-    from media_cache import cached_object
+    from media_cache import cached_object, cached_derived
     content, ctype = await cached_object(path)
+    if cutout:
+        from media_opt import cutout_png
+        path = f"{path}#cutout"
+        content, ctype = await cached_derived(path, lambda: (cutout_png(content), "image/png"))
     return _image_response(request, path, content, ctype)
 
 

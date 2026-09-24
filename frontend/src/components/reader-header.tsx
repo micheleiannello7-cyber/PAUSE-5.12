@@ -38,7 +38,8 @@ export function ReaderHeader({
   const { colors } = useTheme();
   const bg = useAnimatedStyle(() => ({ opacity: solid.value }));
   const show = useAnimatedStyle(() => ({ opacity: reveal.value, transform: [{ translateY: (1 - reveal.value) * 8 }] }));
-  const fill = useAnimatedStyle(() => ({ width: `${Math.round(Math.max(0, Math.min(1, progress.value)) * 100)}%` }));
+  // Solo transform (niente larghezza animata → nessun layout per frame).
+  const fill = useAnimatedStyle(() => ({ transform: [{ scaleX: Math.max(0.001, Math.min(1, progress.value)) }] }));
 
   return (
     <View style={[styles.wrap, { paddingTop: topInset }]} testID="reader-header">
@@ -107,7 +108,7 @@ const useStyles = makeStyles((colors) => ({
     fontSize: 13, letterSpacing: 2,
   },
   track: { width: 56, height: 3, borderRadius: 2, overflow: "hidden", backgroundColor: withAlpha(colors.onSurface, 0.14) },
-  fillWrap: { height: 3, borderRadius: 2, overflow: "hidden", boxShadow: `0px 0px 10px ${colors.cyanGlow}` as any },
+  fillWrap: { width: "100%", height: 3, borderRadius: 2, overflow: "hidden", transformOrigin: "left center", boxShadow: `0px 0px 10px ${colors.cyanGlow}` as any },
   fill: { flex: 1 },
   corner: { position: "absolute", right: spacing.md, bottom: spacing.sm - 2, alignItems: "center", justifyContent: "center" },
 }));

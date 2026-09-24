@@ -2,7 +2,7 @@
 // ricordare" in una card di vetro molto trasparente (lo sfondo resta
 // protagonista), Mi piace + Salva affiancati, Condividi sotto e, spinto in
 // fondo alla pagina, il passo successivo: "Prosegui con un'altra notizia".
-import { View, Text, LayoutChangeEvent } from "react-native";
+import { View, Text } from "react-native";
 import Ionicons from "@react-native-vector-icons/ionicons";
 
 import { Story } from "@/src/api";
@@ -21,16 +21,15 @@ type Props = {
   onShare: () => void;
   onNext: () => void;
   bottomInset: number;
-  onLayout: (e: LayoutChangeEvent) => void;
 };
 
-export function ReaderEnding({ story, liked, onLike, bookmarked, onBookmark, onShare, onNext, bottomInset, onLayout }: Props) {
+export function ReaderEnding({ story, liked, onLike, bookmarked, onBookmark, onShare, onNext, bottomInset }: Props) {
   const styles = useStyles();
   const { colors } = useTheme();
   const { t } = useI18n();
 
   return (
-    <View style={[styles.section, { paddingBottom: bottomInset + spacing.xxl }]} onLayout={onLayout} testID="deep-dive-page-end">
+    <View style={[styles.section, { paddingBottom: bottomInset + spacing.xxl }]} testID="deep-dive-ending">
       <SectionDivider color={colors.warning} />
       <GlassSurface
         intensity="soft"

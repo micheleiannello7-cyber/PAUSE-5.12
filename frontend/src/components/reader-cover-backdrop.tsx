@@ -48,9 +48,6 @@ export function ReaderCoverBackdrop({ story, scrollY, frame, screenW, screenH, m
   const dim = useAnimatedStyle(() => ({
     opacity: interpolate(scrollY.value, [0, morphEnd * 0.45, morphEnd, morphEnd + screenH], [0, 0.32, 0.7, 0.8], Extrapolation.CLAMP),
   }));
-  const scrim = useAnimatedStyle(() => ({
-    opacity: interpolate(scrollY.value, [0, morphEnd * 0.7], [1, 0], Extrapolation.CLAMP),
-  }));
   const fade = useAnimatedStyle(() => ({
     opacity: interpolate(scrollY.value, [morphEnd * 0.4, morphEnd], [0, 1], Extrapolation.CLAMP),
   }));
@@ -68,14 +65,6 @@ export function ReaderCoverBackdrop({ story, scrollY, frame, screenW, screenH, m
       )}
       {/* Tinta notte: porta ogni foto verso la stessa temperatura blu-notte. */}
       <View style={[StyleSheet.absoluteFill, { backgroundColor: colors.nightTint }]} />
-      {/* Sfumatura in basso per il titolo sulla card: sparisce quando diventa sfondo. */}
-      <Animated.View style={[styles.scrim, scrim]}>
-        <LinearGradient
-          colors={[withAlpha(colors.surface, 0), withAlpha(colors.surface, 0.6), withAlpha(colors.surface, 0.96)]}
-          locations={[0, 0.5, 1]}
-          style={StyleSheet.absoluteFill}
-        />
-      </Animated.View>
       {/* Velo scuro che cresce con lo scroll: il testo resta protagonista. */}
       <Animated.View style={[StyleSheet.absoluteFill, { backgroundColor: colors.surface }, dim]} />
       {/* Fusione verso il fondo pagina, solo da sfondo. */}
@@ -92,5 +81,4 @@ export function ReaderCoverBackdrop({ story, scrollY, frame, screenW, screenH, m
 
 const useStyles = makeStyles((colors) => ({
   box: { position: "absolute", overflow: "hidden", borderWidth: 1, backgroundColor: colors.surfaceSecondary },
-  scrim: { position: "absolute", left: 0, right: 0, bottom: 0, height: "62%" },
 }));

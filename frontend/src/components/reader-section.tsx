@@ -1,7 +1,7 @@
 // PAUSE — una sezione (capitolo) della lettura verticale: occhiello con il
 // piccolo punto luminoso del capitolo, titolo, corpo in paragrafi brevi. Le
 // sezioni si susseguono in cascata, separate da una linea sottile e luminosa.
-import { View, Text, LayoutChangeEvent } from "react-native";
+import { View, Text } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
 import Animated, { SharedValue, useAnimatedStyle, withTiming } from "react-native-reanimated";
 
@@ -56,18 +56,18 @@ export function stripStepPrefix(title: string): string {
 }
 
 export function ChapterSection({
-  chapter, story, eyebrow, current, onLayout,
-}: { chapter: Chapter; story: Story; eyebrow: string; current: SharedValue<number>; onLayout: (e: LayoutChangeEvent) => void }) {
+  chapter, story, eyebrow, current,
+}: { chapter: Chapter; story: Story; eyebrow: string; current: SharedValue<number> }) {
   const styles = useStyles();
   const { colors } = useTheme();
   const glow = chapter.glow_color || colors.cyan;
-  // Il capitolo centrato è pieno; quelli che spuntano sopra/sotto restano
-  // attenuati, così è chiaro qual è la pagina che si sta leggendo.
+  // La pagina corrente è piena; quella che entra/esce durante il passaggio
+  // resta attenuata finché non è al centro.
   const focus = useAnimatedStyle(() => ({
     opacity: withTiming(current.value === chapter.number ? 1 : 0.38, { duration: 260 }),
   }));
   return (
-    <Animated.View style={[styles.section, focus]} onLayout={onLayout} testID={`deep-dive-page-chapter-${chapter.number}`}>
+    <Animated.View style={[styles.section, focus]} testID={`deep-dive-chapter-${chapter.number}`}>
       <SectionDivider color={glow} />
       <View style={styles.eyebrowRow}>
         <View style={[styles.dot, { backgroundColor: glow, boxShadow: `0px 0px 12px ${withAlpha(glow, 0.7)}` as any }]} />

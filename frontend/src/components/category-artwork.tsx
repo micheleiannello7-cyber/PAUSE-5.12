@@ -59,12 +59,12 @@ const useStyles = makeStyles((colors) => ({
 
 // Icona 3D della categoria "nuda" (senza fondo né sfumatura), per badge e
 // pillole: stessa immagine della Home; se non carica, torna l'icona a linea.
-export function CategoryArtMark({ categoryId, color, size, testID }: { categoryId: string; color: string; size: number; testID: string }) {
+export function CategoryArtMark({ categoryId, color, size, plain = false, testID }: { categoryId: string; color: string; size: number; /** Senza piastrella scura dietro: solo l'oggetto 3D. */ plain?: boolean; testID: string }) {
   const { colors } = useTheme();
   const [failed, setFailed] = useState(false);
   if (failed) return <CategoryIcon categoryId={categoryId} color={color} highlightColor={colors.onGradient} size={Math.round(size * 0.7)} testID={`${testID}-line-icon`} />;
   return (
-    <Image testID={testID} source={{ uri: categoryArtworkUrl(categoryId, ART_VERSION) }} style={{ width: size, height: size, borderRadius: Math.round(size * 0.3), backgroundColor: colors.artworkSurface }}
+    <Image testID={testID} source={{ uri: categoryArtworkUrl(categoryId, ART_VERSION, plain) }} style={{ width: size, height: size, borderRadius: plain ? 0 : Math.round(size * 0.3), backgroundColor: plain ? "transparent" : colors.artworkSurface }}
       contentFit="contain" cachePolicy="memory-disk" transition={0} onError={() => setFailed(true)} />
   );
 }

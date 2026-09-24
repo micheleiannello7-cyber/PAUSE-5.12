@@ -26,6 +26,7 @@ import { HighlightedTitle } from "@/src/components/highlighted-title";
 import { StoryAudioProvider, AudioSheet, AudioMiniBadge, IntroListenButton } from "@/src/components/story-audio-player";
 import { ReaderHeader, READER_HEADER_H } from "@/src/components/reader-header";
 import { ChapterSection, READER_MAX_W } from "@/src/components/reader-section";
+import { ReaderPage } from "@/src/components/reader-page";
 import { ReaderEnding } from "@/src/components/reader-ending";
 import { Screen } from "@/src/components/screen";
 import { StoryShareCard, SHARE_CARD_WIDTH } from "@/src/components/story-share-card";
@@ -78,7 +79,10 @@ export default function DeepDive() {
   const sectionCount = chapterCount + 2;
   const lastSection = sectionCount - 1;
 
-  // --- Scroll: posizione continua, offset delle sezioni, sezione corrente ---
+  // --- Scroll a pagine: ogni sezione è una pagina alta quanto lo schermo ---
+  // Il paging è nativo (pagingEnabled + disableIntervalMomentum): un gesto,
+  // anche veloce, porta sempre alla pagina successiva/precedente e la centra,
+  // senza logica custom sullo scroll. scrollY resta continuo per la copertina.
   const scrollRef = useAnimatedRef<Animated.ScrollView>();
   const scrollY = useSharedValue(0);
   const progress = useSharedValue(0);
@@ -86,61 +90,25 @@ export default function DeepDive() {
   // Titolo nella barra: compare quando il titolo grande della copertina scorre via.
   const headerReveal = useSharedValue(0);
   const bigTitleY = useSharedValue(0);
-  const offsets = useSharedValue<number[]>([]);
-  const heights = useSharedValue<number[]>([]);
   const currentSV = useSharedValue(-1);
   const headerBottom = insets.top + READER_HEADER_H;
+  // Altezza reale dello ScrollView (= altezza pagina), misurata a layout.
+  const [pageH, setPageH] = useState(winH);
+  const pageHSV = useSharedValue(winH);
   // Copertina: card grande, arrotondata, staccata dai bordi, con il titolo in
   // basso. Lo stesso livello fisso dietro allo scroll (ReaderCoverBackdrop)
   // parte da questa geometria e cresce fino a diventare lo sfondo.
   const columnW = Math.min(winW, READER_MAX_W);
   const cardW = columnW - spacing.xl * 2;
-  const cardH = Math.min(Math.round(cardW * 0.9), Math.round(winH * 0.38));
+  const cardH = Math.min(Math.round(cardW * 0.72), Math.round(winH * 0.3));
   const cover: CoverFrame = { top: insets.top + spacing.lg, left: (winW - columnW) / 2 + spacing.xl, width: cardW, height: cardH, radius: 22 };
   // La trasformazione in sfondo è completa qui.
   const morphEnd = cover.top + Math.round(cardH * 0.75);
-  // Una sezione diventa "corrente" quando il suo inizio supera il primo terzo
-  // dello schermo: si aggiorna mentre si scorre, senza bloccare nulla.
-  const anchor = Math.round(winH * 0.38);
-  const pendingScroll = useRef<number | null>(start === "1" ? 1 : null);
   // Ultimo scroll programmatico (apertura su un capitolo, ripresa): solo un
   // movimento del lettore oltre quel punto conta come "gesto" per salvare.
   const autoY = useSharedValue(0);
   const touchedSV = useSharedValue(false);
   const markTouched = () => { touchedRef.current = true; touchedSV.value = true; };
-
-  // --- Aggancio ai capitoli (paging) ---
-  // Ogni sezione ha una posizione "di riposo": centrata nello schermo se ci
-  // sta tutta, altrimenti allineata in alto sotto la barra (e in più una
-  // posizione di riposo alla sua fine, per leggerla tutta). Le posizioni sono
-  // passate allo ScrollView nativo (snapToOffsets + disableIntervalMomentum):
-  // appena il gesto ha una direzione, lo scorrimento si completa da solo sulla
-  // sezione vicina in quella direzione e la centra — un gesto, un capitolo.
-  const [snapOffsets, setSnapOffsets] = useState<number[]>([]);
-  const readable = winH - headerBottom;
-  const contentH = useRef(0);
-
-  const restYFor = useCallback((y: number, h: number): number => {
-    if (h === 0 || h > readable) return Math.max(0, y - headerBottom - spacing.md); // alta: inizio sotto la barra
-    return Math.max(0, y + h / 2 - (winH + headerBottom) / 2);                     // corta: centrata
-  }, [readable, headerBottom, winH]);
-
-  const recomputeRests = useCallback(() => {
-    const offs = offsets.value;
-    const hs = heights.value;
-    if (offs.length !== sectionCount || offs.some((o) => o < 0)) return;
-    const maxY = Math.max(0, contentH.current - winH);
-    const rests = new Set<number>([0]);
-    for (let i = 1; i < sectionCount; i++) {
-      const y = offs[i];
-      const h = hs[i] ?? 0;
-      rests.add(Math.min(maxY, restYFor(y, h)));
-      // Sezione più alta dello schermo: anche la sua fine è un punto di riposo.
-      if (h > readable) rests.add(Math.min(maxY, Math.max(0, y + h - winH + spacing.lg)));
-    }
-    const next = [...rests].sort((a, b) => a - b);
-    setSnapOffsets((prev) => (prev.length === next.length && prev.every((v, k) => v === next[k]) ? prev : next));
-  }, [offsets, heights, sectionCount, winH, readable, restYFor]);
 
   const onScroll = useAnimatedScrollHandler({
     onScroll: (e) => {
@@ -157,12 +125,8 @@ export default function DeepDive() {
       const reveal = bigTitleY.value > 0 ? interpolate(y, [titleTop - 40, titleTop + 48], [0, 1], Extrapolation.CLAMP) : 0;
       headerReveal.value = reveal;
       headerSolid.value = reveal;
-      const offs = offsets.value;
-      let idx = 0;
-      for (let i = 0; i < offs.length; i++) {
-        if (offs[i] >= 0 && offs[i] <= y + anchor) idx = i;
-      }
-      if (offs.length > 0 && y + e.layoutMeasurement.height >= e.contentSize.height - 24) idx = offs.length - 1;
+      // Pagina corrente: quella più vicina alla posizione (cambia a metà strada).
+      const idx = Math.max(0, Math.min(sectionCount - 1, Math.round(y / pageHSV.value)));
       if (idx !== currentSV.value) {
         currentSV.value = idx;
         runOnJS(setSection)(idx);
@@ -171,30 +135,23 @@ export default function DeepDive() {
   });
 
   const scrollToSection = useCallback((i: number, animated = true) => {
-    const y = offsets.value[i];
-    if (y == null || y < 0) return;
-    const target = restYFor(y, heights.value[i] ?? 0);
+    const target = i * pageH;
     autoY.value = target;
     scrollRef.current?.scrollTo({ y: target, animated });
-  }, [offsets, heights, scrollRef, restYFor, autoY]);
+  }, [pageH, scrollRef, autoY]);
 
-  const onSectionLayout = (i: number) => (e: LayoutChangeEvent) => {
-    const y = Math.round(e.nativeEvent.layout.y);
+  const onScrollLayout = (e: LayoutChangeEvent) => {
     const h = Math.round(e.nativeEvent.layout.height);
-    const next = offsets.value.length === sectionCount ? [...offsets.value] : Array(sectionCount).fill(-1);
-    const nh = heights.value.length === sectionCount ? [...heights.value] : Array(sectionCount).fill(0);
-    if (next[i] === y && nh[i] === h) return;
-    next[i] = y;
-    nh[i] = h;
-    offsets.value = next;
-    heights.value = nh;
-    recomputeRests();
-    if (pendingScroll.current === i) {
-      pendingScroll.current = null;
-      scrollToSection(i, false);
-    }
+    if (h > 0 && h !== pageH) { setPageH(h); pageHSV.value = h; }
   };
-  const onContentSizeChange = (_w: number, h: number) => { contentH.current = h; recomputeRests(); };
+  // Apertura diretta su un capitolo (`start=1`): posiziona senza animazione.
+  const startedAtChapter = useRef(false);
+  useEffect(() => {
+    if (start === "1" && story && !startedAtChapter.current) {
+      startedAtChapter.current = true;
+      requestAnimationFrame(() => scrollToSection(1, false));
+    }
+  }, [start, story, scrollToSection]);
 
   // Riprende dalla sezione in cui il lettore aveva lasciato questa storia.
   useEffect(() => {
@@ -202,8 +159,7 @@ export default function DeepDive() {
     getReadingProgress(userId).then((p) => {
       if (p && p.story.id === id && p.page > 0 && p.page < lastSection) {
         setSection(p.page);
-        if (offsets.value[p.page] >= 0) scrollToSection(p.page, false);
-        else pendingScroll.current = p.page;
+        requestAnimationFrame(() => scrollToSection(p.page, false));
       }
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -329,26 +285,24 @@ export default function DeepDive() {
           onScroll={onScroll}
           scrollEventThrottle={16}
           onScrollBeginDrag={markTouched}
-          onContentSizeChange={onContentSizeChange}
-          snapToOffsets={snapOffsets.length > 1 ? snapOffsets : undefined}
+          onLayout={onScrollLayout}
+          pagingEnabled
           disableIntervalMomentum
-          decelerationRate="fast"
           showsVerticalScrollIndicator={false}
-          contentContainerStyle={styles.content}
+          style={styles.scroll}
           testID="deep-dive-scroll"
         >
           {/* Presentazione (sezione 0): spazio per la card copertina (l'immagine
-              vera è il livello fisso dietro) con il titolo in basso, poi
+              vera è il livello fisso dietro), titolo subito sotto, poi
               introduzione, scheda informativa e i tasti Leggi / Ascolta.
               Scorrendo, la copertina cresce dietro il testo fino a farsi sfondo. */}
-          <View style={[styles.hero, { paddingTop: cover.top }]} onLayout={onSectionLayout(0)} testID="deep-dive-page-intro">
-            <View style={[styles.coverArea, { height: cardH, width: cardW }]} testID="deep-dive-cover-card">
-              <View style={styles.heroTitleWrap} onLayout={(e) => { bigTitleY.value = cover.top + Math.round(e.nativeEvent.layout.y); }}>
-                <CoverTitle title={story.title} highlight={story.highlight_words} reveal={headerReveal} />
-              </View>
-            </View>
+          <ReaderPage height={pageH} paddingTop={cover.top} paddingBottom={insets.bottom + spacing.lg} center={false} testID="deep-dive-page-intro">
+            <View style={[styles.coverArea, { height: cardH, width: cardW }]} testID="deep-dive-cover-card" />
             <View style={styles.sheet}>
               <View style={styles.sheetInner}>
+                <View style={styles.heroTitleWrap} onLayout={(e) => { bigTitleY.value = Math.round(e.nativeEvent.layout.y); }}>
+                  <CoverTitle title={story.title} highlight={story.highlight_words} reveal={headerReveal} />
+                </View>
                 <View style={styles.introBlock}>
                   <View style={styles.introEyebrowRow}>
                     <View style={styles.introDot} />
@@ -363,30 +317,26 @@ export default function DeepDive() {
                 </View>
               </View>
             </View>
-          </View>
+          </ReaderPage>
 
           {story.chapters.map((c) => (
-            <ChapterSection
-              key={c.number}
-              chapter={c}
-              story={story}
-              eyebrow={`${t.chapter} ${c.number}`}
-              current={currentSV}
-              onLayout={onSectionLayout(c.number)}
-            />
+            <ReaderPage key={c.number} height={pageH} paddingTop={headerBottom} paddingBottom={insets.bottom + spacing.lg} testID={`deep-dive-page-chapter-${c.number}`}>
+              <ChapterSection chapter={c} story={story} eyebrow={`${t.chapter} ${c.number}`} current={currentSV} />
+            </ReaderPage>
           ))}
 
-          <ReaderEnding
-            story={story}
-            liked={liked}
-            onLike={() => toggle("like")}
-            bookmarked={bookmarked}
-            onBookmark={() => toggle("bookmark")}
-            onShare={onShare}
-            onNext={onNext}
-            bottomInset={insets.bottom}
-            onLayout={onSectionLayout(lastSection)}
-          />
+          <ReaderPage height={pageH} paddingTop={headerBottom} paddingBottom={0} testID="deep-dive-page-end">
+            <ReaderEnding
+              story={story}
+              liked={liked}
+              onLike={() => toggle("like")}
+              bookmarked={bookmarked}
+              onBookmark={() => toggle("bookmark")}
+              onShare={onShare}
+              onNext={onNext}
+              bottomInset={insets.bottom}
+            />
+          </ReaderPage>
         </Animated.ScrollView>
 
         {section === 1 ? (
@@ -420,20 +370,19 @@ function CoverTitle({ title, highlight, reveal }: { title: string; highlight: st
 
 const useStyles = makeStyles((colors: ThemeColors) => ({
   container: { flex: 1, backgroundColor: colors.surface },
-  content: { paddingBottom: spacing.lg },
+  scroll: { flex: 1 },
   shareHidden: { position: "absolute", left: -4000, top: 0, width: SHARE_CARD_WIDTH, pointerEvents: "none" },
 
   // Presentazione: card copertina (spazio; l'immagine vera è il livello fisso
-  // dietro) con il titolo in basso, poi la scheda con introduzione, info e azioni.
-  hero: { width: "100%" },
-  coverArea: { alignSelf: "center", justifyContent: "flex-end" },
-  heroTitleWrap: { width: "100%", paddingHorizontal: spacing.lg, paddingBottom: spacing.lg },
+  // dietro), titolo subito sotto, poi introduzione, scheda info e azioni.
+  coverArea: { alignSelf: "center" },
+  heroTitleWrap: { width: "100%" },
   coverTitle: {
-    color: colors.textWarm, fontFamily: typography.displayBold, fontSize: 29, lineHeight: 35, letterSpacing: -0.6,
+    color: colors.textWarm, fontFamily: typography.displayBold, fontSize: 27, lineHeight: 32, letterSpacing: -0.6,
     textShadowColor: withAlpha(colors.surface, 0.9), textShadowOffset: { width: 0, height: 2 }, textShadowRadius: 14,
   },
   sheet: { width: "100%", paddingBottom: spacing.xxl },
-  sheetInner: { width: "100%", maxWidth: READER_MAX_W, alignSelf: "center", paddingHorizontal: spacing.xl, paddingTop: spacing.lg + spacing.xs, gap: spacing.lg + spacing.xs },
+  sheetInner: { width: "100%", maxWidth: READER_MAX_W, alignSelf: "center", paddingHorizontal: spacing.xl, paddingTop: spacing.md, gap: spacing.lg },
   introBlock: { gap: spacing.sm },
   // Occhiello "INTRODUZIONE": piccolo e luminoso, sopra l'aggancio.
   introEyebrowRow: { flexDirection: "row", alignItems: "center", alignSelf: "flex-start", gap: spacing.sm },

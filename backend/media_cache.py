@@ -71,6 +71,25 @@ async def cached_object(storage_path: str) -> tuple[bytes, str]:
         raise HTTPException(404, "Asset not found in Object Storage")
 
 
+def _read_or_make(key: str, make) -> tuple[bytes, str]:
+    data_file, meta_file = _entry(key)
+    if data_file.exists() and meta_file.exists():
+        return data_file.read_bytes(), json.loads(meta_file.read_text())["content_type"]
+    content, ctype = make()
+    tmp = data_file.with_suffix(".tmp")
+    tmp.write_bytes(content)
+    tmp.replace(data_file)
+    meta_file.write_text(json.dumps({"content_type": ctype, "path": key}))
+    _trim()
+    return content, ctype
+
+
+async def cached_derived(key: str, make) -> tuple[bytes, str]:
+    """Variante derivata di un asset (es. sfondo rimosso), calcolata una volta
+    e servita da disco come gli oggetti dello storage."""
+    return await run_in_threadpool(_read_or_make, key, make)
+
+
 def stats() -> dict:
     sizes = [f.stat().st_size for f in CACHE_DIR.glob("*.bin")]
     return {"files": len(sizes), "bytes": sum(sizes), "budget_bytes": MAX_BYTES}
