@@ -18,6 +18,10 @@ QUALITY = 84
 
 def encode_webp(raw: bytes, max_side: int) -> bytes:
     image = ImageOps.exif_transpose(Image.open(io.BytesIO(raw)))
+    # Sorgente già WebP entro il limite (es. backend/covers pre-ottimizzate):
+    # nessuna ricompressione, si usa il file così com'è.
+    if image.format == "WEBP" and max(image.size) <= max_side:
+        return raw
     image = image.convert("RGB") if image.mode not in ("RGB", "RGBA") else image
     image.thumbnail((max_side, max_side), Image.Resampling.LANCZOS)
     out = io.BytesIO()

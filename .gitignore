@@ -86,3 +86,7 @@ android-sdk/
 credentials.json
 *.key
 .credentials
+
+# PAUSE runtime caches (rigenerate automaticamente)
+backend/media_cache/
+backend/tts_cache/

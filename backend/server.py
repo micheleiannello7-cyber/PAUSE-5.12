@@ -1510,6 +1510,13 @@ logging.basicConfig(
 async def startup_event():
     logger.info("Reclassified legacy Curiosità records: %s", await migrate_curiosita(db, CATEGORIES))
     await ensure_seed()
+    # Asset sync (copertine, artwork, audio) può richiedere minuti in un ambiente
+    # nuovo: gira in background così l'API risponde subito. Le storie senza
+    # copertina usano il fallback grafico finché la sync non le collega.
+    app.state.asset_sync = asyncio.create_task(sync_assets_in_background())
+
+
+async def sync_assets_in_background():
     from category_artwork import ensure_category_artwork
     await ensure_category_artwork(db)
     from content_mode_artwork import ensure_content_mode_artwork
