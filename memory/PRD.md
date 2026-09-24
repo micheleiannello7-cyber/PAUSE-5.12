@@ -27,3 +27,7 @@ La dimensione dell'app compilata (APK/IPA) NON dipende dagli asset del repo (sol
 
 ## Date
 - 2026-06: analisi preview + spiegazione dimensioni app.
+
+## Aggiornamento (fork)
+- Aggiunto `src/utils/clear-cache.ts` + chiamata in `app/_layout.tsx`: ad ogni avvio svuota cache immagini (expo-image) e directory cache (expo-file-system). Non tocca AsyncStorage/SecureStore.
+- Verificato: il progetto contiene SOLO il template Emergent (index.tsx boilerplate). Il codice dell'app dell'utente NON è presente in questo ambiente. La schermata "e"/"Start building apps on emergent" È l'app attuale, non uno splash bloccato.
