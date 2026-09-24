@@ -38,7 +38,14 @@
       "expo-image",
       "expo-secure-store",
       "expo-web-browser",
-      "expo-status-bar"
+      "expo-status-bar",
+      "@react-native-vector-icons/feather",
+      "@react-native-vector-icons/ionicons",
+      "@react-native-vector-icons/material-design-icons",
+      "expo-audio",
+      "expo-localization",
+      "expo-sharing",
+      "expo-video"
     ],
     "experiments": {
       "typedRoutes": true

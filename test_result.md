@@ -101,3 +101,91 @@
 #====================================================================================================
 # Testing Data - Main Agent and testing sub agent both should log testing data below this section
 #====================================================================================================
+
+# Current cover-generation task (supersedes the older UI entries below):
+# User: "Una volta terminato, genera quante più copertine puoi con stessa qualità di quelle già esistenti, ho ricaricato la chiave api"
+# Confirmed: use available API credit for missing covers, preserve existing covers, TTS/Stripe off.
+# backend implemented / needs_retesting: generate_covers.py checkpointed batch, source originals
+# retained in covers/, same Nano Banana model, atomic no-overwrite DB writes, 3 portrait pilot
+# covers (volcanoes-basics, why-seasons, how-glaciers-move), remaining batch currently running.
+# Before: 437 stories, 132 generated covers + 47 photographic covers, 258 missing.
+# Run reports: memory/cover_batches/*.json (existing_covers snapshot, generated, errors, status).
+# Added optional_services.py API guard: TTS defaults off independently of image key; Stripe
+# already has no key and returns 503. No auth, frontend edits or runtime image generation.
+# Test focus: all completed new hero/thumb endpoints decode; existing 179 covers unchanged;
+# run --dry-run does not spend credits; lock prevents duplicate execution; portrait quality;
+# preview intro -> Home, new cover reader + scroll, old cover still visible; no TTS calls.
+# Screenshot smoke: 390x844 intro loaded; pilot images 896x1200 match existing originals.
+# No APIs mocked. Do not invoke real image generation during testing; inspect dry-run only.
+# FINAL: 194 new covers published; 373/437 covered; 64 missing. Budget stop honored.
+# Final pytest: 5/5 PASS, test_reports/pytest/cover_batch_final.xml. 388 new media
+# endpoints verified. All original179 preserved. Recovery (4 already-paid originals)
+# idempotent, no AI calls. Seed fallback overwrite fixed; TTS/Stripe intentionally off.
+# iteration_5 follow-up: test_reports/cover_batch_followup.md explains corrected test
+# baseline/process false positives. No unresolved scoped functional bugs.
+
+user_problem_statement: "Rifare da zero le icone categoria in stile 3D più semplice e meno invadente nella Home. Ultime richieste: più saturi, belli colorati; Animali sempre un bassotto."
+backend:
+  - task: "Versioned colorful-3d-v3 category assets"
+    implemented: true
+    working: true
+    file: "backend/category_artwork.py, category_art_manifest.json, calm_category_art.py, restore_category_art.py"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+      - working: "NA"
+        agent: "main"
+        comment: "13 real WebP assets uploaded to Object Storage and associated in MongoDB; idempotent migration and fork restore support added. Check API category paths + media, no story/user changes."
+      - working: true
+        agent: "testing"
+        comment: "iteration_2: pytest 2/2 pass, all 12 categories versioned correctly and 13 media objects valid WebP."
+frontend:
+  - task: "Simple colorful 3D icons and quiet framing"
+    implemented: true
+    working: true
+    file: "frontend/src/components/category-artwork.tsx, category-grid.tsx, home-controls.tsx, frontend/src/api.ts"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+      - working: true
+        agent: "main"
+        comment: "Home 390px screenshot shows new saturated 3D images including dachshund. Animals selection works. Topics 320px layout keeps three columns; first screenshot captured image placeholders before loading, so wait for all images to load in detailed test. Removed old clip overlays, continuous pulse and decorative mini SVG badge; pressed/selected states preserved."
+      - working: true
+        agent: "testing"
+        comment: "iteration_2: requested Home/Topics/Onboarding/reader flows pass, 3-column Topics at 320/390px, real images loaded, filters/toggles/persistence pass, light theme legible. Main agent reviewed Topics screenshots: dachshund and all new subjects correct. Only pre-existing non-blocking RN-web deprecation warnings."
+metadata:
+  created_by: "main_agent"
+  version: "1.0"
+  test_sequence: 1
+  run_ui: true
+test_plan:
+  current_focus: ["Versioned colorful-3d-v3 category assets", "Simple colorful 3D icons and quiet framing"]
+  stuck_tasks: []
+  test_all: false
+  test_priority: "high_first"
+agent_communication:
+  - agent: "main"
+    message: "No authentication: memory/test_credentials.md documents anonymous user. Test public preview /discover then home-see-all. Wait for aria-busy=false on artwork, image complete/naturalWidth>0; category images must show real new objects not fallback. Verify 13 media endpoints, Home filter and topic toggles at 320/390px, light mode, reader opens. Known pre-existing story covers missing in this fork may show fallback; do not redesign them or turn on TTS/Stripe. No APIs mocked."  - task: "Reader title-first cover page, equal 3D CTAs (Leggi/Ascolta), header mini audio badge, single meta pill with 3D category icon; Home category tiles without counts/badge"
+    implemented: true
+    working: "NA"
+    file: "frontend/app/deep-dive/[id].tsx, src/components/intro-cta-button.tsx, story-audio-player/mini.tsx, intro.tsx, reader-header.tsx, story-meta-chips.tsx, category-artwork.tsx, home-controls.tsx, app/(tabs)/discover.tsx"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: true
+    status_history:
+      - working: "NA"
+        agent: "main"
+        comment: "Cover page = only meta pill + full title; intro below the fold; header title fades in via reveal; y=0 is a snap anchor. Premium user shows Ascolta + header badge after tap. Home tiles: no counts, no 'da scoprire' badge."
+  - task: "Reader presentation redesign: rounded cover card → morphs into reading background, full title, intro, 3-cell info grid, CTA 'Leggi la storia'"
+    implemented: true
+    working: "NA"
+    file: "frontend/app/deep-dive/[id].tsx, src/components/reader-morph-cover.tsx, story-info-grid.tsx, intro-cta-button.tsx, story-meta-chips.tsx"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: true
+    status_history:
+      - working: "NA"
+        agent: "main"
+        comment: "Hero section (section 0): cover placeholder + CoverTitle + INTRODUZIONE/hook + StoryInfoGrid + CTA row. ReaderMorphCover is a fixed layer that matches the card frame at y=0 and expands to full screen by morphEnd. No backend changes."

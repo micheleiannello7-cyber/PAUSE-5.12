@@ -1,30 +1,39 @@
-import { View, StyleSheet, Image } from "react-native";
+import { useEffect } from "react";
+import { View, ActivityIndicator } from "react-native";
+import { useRouter } from "expo-router";
+import { makeStyles, useTheme } from "@/src/theme";
+import { getOrCreateUserId, isOnboarded } from "@/src/session";
 
-const EXPO_PUBLIC_BACKEND_URL = process.env.EXPO_PUBLIC_BACKEND_URL;
+// Fase test/programmazione: mostra SEMPRE l'onboarding (presentazione →
+// categorie → home) a ogni apertura. Metti a false per ripristinare lo skip.
+const ALWAYS_SHOW_ONBOARDING = true;
 
 export default function Index() {
-  console.log(EXPO_PUBLIC_BACKEND_URL, "EXPO_PUBLIC_BACKEND_URL");
+  const router = useRouter();
+  const styles = useStyles();
+  const { colors } = useTheme();
+
+  useEffect(() => {
+    (async () => {
+      await getOrCreateUserId();
+      const onboarded = await isOnboarded();
+      const goHome = !ALWAYS_SHOW_ONBOARDING && onboarded;
+      router.replace(goHome ? "/(tabs)/discover" : "/onboarding");
+    })();
+  }, [router]);
 
   return (
-    <View style={styles.container}>
-      <Image
-        source={require("../assets/images/app-image.png")}
-        style={styles.image}
-      />
+    <View style={styles.container} testID="root-loader">
+      <ActivityIndicator color={colors.brand} />
     </View>
   );
 }
 
-const styles = StyleSheet.create({
+const useStyles = makeStyles((colors) => ({
   container: {
     flex: 1,
-    backgroundColor: "#0c0c0c",
+    backgroundColor: colors.surface,
     alignItems: "center",
     justifyContent: "center",
   },
-  image: {
-    width: "100%",
-    height: "100%",
-    resizeMode: "contain",
-  },
-});
+}));
