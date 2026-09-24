@@ -1,9 +1,10 @@
-// PAUSE — copertina del lettore. Un solo livello fisso dietro allo scroll:
-// a riposo riempie la fascia alta della presentazione (tutta larghezza), e
-// scorrendo verso i capitoli si ingrandisce fino a coprire lo schermo e si
-// scurisce, diventando lo sfondo cinematografico della lettura.
-// La trasformazione usa SOLO transform (translate + scale) e opacità: niente
-// layout animato, niente blur → fluida anche su Android.
+// PAUSE — copertina del lettore "che si trasforma". Un solo livello fisso
+// dietro allo scroll: a riposo ha la geometria della card arrotondata della
+// presentazione (in alto, staccata dai bordi); scorrendo si ingrandisce con una
+// scala uniforme finché copre tutto lo schermo e si scurisce, diventando lo
+// sfondo cinematografico della lettura. Solo transform (translate + scale) e
+// opacità: niente layout animato, niente blur → fluida anche su Android, in
+// entrambe le direzioni.
 import { StyleSheet, View } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
 import Animated, { Extrapolation, interpolate, SharedValue, useAnimatedStyle } from "react-native-reanimated";
@@ -13,69 +14,83 @@ import { makeStyles, useTheme, withAlpha } from "@/src/theme";
 import { StoryHero } from "./story-hero";
 import { LessonCover } from "./lesson-cover";
 
-export function ReaderCoverBackdrop({ story, scrollY, coverH, screenW, screenH }: {
-  story: Story; scrollY: SharedValue<number>;
-  /** Altezza della fascia copertina a riposo (in alto, tutta larghezza). */
-  coverH: number; screenW: number; screenH: number;
+export type CoverFrame = { top: number; left: number; width: number; height: number; radius: number };
+
+export function ReaderCoverBackdrop({ story, scrollY, frame, screenW, screenH, morphEnd }: {
+  story: Story; scrollY: SharedValue<number>; frame: CoverFrame; screenW: number; screenH: number;
+  /** Offset di scroll al quale la trasformazione in sfondo è completa. */
+  morphEnd: number;
 }) {
   const styles = useStyles();
   const { colors } = useTheme();
   const hasCover = !!story.hero_image_generated || (!isLesson(story) && !!story.hero_image);
 
-  // Il livello ha misura fissa (larghezza schermo × 4:3 circa): a riposo è
-  // centrato verticalmente sulla fascia copertina; a fine trasformazione è
-  // scalato e centrato sullo schermo intero.
-  const layerH = Math.max(coverH, Math.round(screenW * 4 / 3));
-  const restY = -(layerH - coverH) / 2;
-  const endScale = Math.max(1, screenH / layerH);
-  const endY = screenH / 2 - layerH / 2;
-  const morphEnd = coverH;
+  // Scala uniforme che porta la card a coprire lo schermo (con margine), e
+  // spostamento del centro della card verso il centro dello schermo.
+  const endScale = Math.max(screenW / frame.width, screenH / frame.height) * 1.02;
+  const dx = screenW / 2 - (frame.left + frame.width / 2);
+  const dy = screenH / 2 - (frame.top + frame.height / 2);
 
-  const image = useAnimatedStyle(() => {
+  const box = useAnimatedStyle(() => {
     const y = scrollY.value;
     const p = interpolate(y, [0, morphEnd], [0, 1], Extrapolation.CLAMP);
-    // Tirando verso il basso oltre l'inizio la foto si "stira" un po'.
-    const stretch = y < 0 ? Math.min(0.14, -y / 520) : 0;
+    // Tirando verso il basso oltre l'inizio la card segue un po' il dito e si stira.
+    const pull = y < 0 ? -y : 0;
     return {
       transform: [
-        { translateY: interpolate(p, [0, 1], [restY, endY]) + (y < 0 ? -y * 0.5 : 0) },
-        { scale: interpolate(p, [0, 1], [1, endScale]) + stretch },
+        { translateX: dx * p },
+        { translateY: dy * p + pull * 0.45 },
+        { scale: interpolate(p, [0, 1], [1, endScale]) + Math.min(0.1, pull / 700) },
       ],
+      borderColor: withAlpha(colors.onGradient, 0.18 * (1 - p)),
     };
   });
   const dim = useAnimatedStyle(() => ({
-    opacity: interpolate(scrollY.value, [0, morphEnd * 0.5, morphEnd, morphEnd + screenH], [0, 0.35, 0.66, 0.74], Extrapolation.CLAMP),
+    opacity: interpolate(scrollY.value, [0, morphEnd * 0.45, morphEnd, morphEnd + screenH], [0, 0.32, 0.7, 0.8], Extrapolation.CLAMP),
+  }));
+  const scrim = useAnimatedStyle(() => ({
+    opacity: interpolate(scrollY.value, [0, morphEnd * 0.7], [1, 0], Extrapolation.CLAMP),
   }));
   const fade = useAnimatedStyle(() => ({
-    opacity: interpolate(scrollY.value, [morphEnd * 0.3, morphEnd], [0, 1], Extrapolation.CLAMP),
+    opacity: interpolate(scrollY.value, [morphEnd * 0.4, morphEnd], [0, 1], Extrapolation.CLAMP),
   }));
 
   return (
-    <View style={[styles.box, { width: screenW, height: screenH }]} pointerEvents="none" testID="chapter-cover-bg">
-      <Animated.View style={[styles.layer, { width: screenW, height: layerH }, image]}>
-        {hasCover ? (
-          <StoryHero story={story} style={StyleSheet.absoluteFill} transition={400} />
-        ) : (
-          <LessonCover color={colors.muted} icon={story.category_icon} iconSize={72} showBadge={false} style={StyleSheet.absoluteFill} />
-        )}
-        {/* Tinta notte: porta ogni foto verso la stessa temperatura blu-notte. */}
-        <View style={[StyleSheet.absoluteFill, { backgroundColor: colors.nightTint }]} />
-      </Animated.View>
-      {/* Velo scuro che cresce con lo scroll: il testo resta protagonista. */}
-      <Animated.View style={[StyleSheet.absoluteFill, { backgroundColor: colors.surface }, dim]} />
-      {/* Fusione verso il fondo pagina, solo quando è diventata sfondo. */}
-      <Animated.View style={[StyleSheet.absoluteFill, fade]}>
+    <Animated.View
+      style={[styles.box, { top: frame.top, left: frame.left, width: frame.width, height: frame.height, borderRadius: frame.radius }, box]}
+      pointerEvents="none"
+      testID="chapter-cover-bg"
+    >
+      {hasCover ? (
+        <StoryHero story={story} style={StyleSheet.absoluteFill} transition={400} />
+      ) : (
+        <LessonCover color={colors.muted} icon={story.category_icon} iconSize={72} showBadge={false} style={StyleSheet.absoluteFill} />
+      )}
+      {/* Tinta notte: porta ogni foto verso la stessa temperatura blu-notte. */}
+      <View style={[StyleSheet.absoluteFill, { backgroundColor: colors.nightTint }]} />
+      {/* Sfumatura in basso per il titolo sulla card: sparisce quando diventa sfondo. */}
+      <Animated.View style={[styles.scrim, scrim]}>
         <LinearGradient
-          colors={[withAlpha(colors.surface, 0), withAlpha(colors.surface, 0), withAlpha(colors.surface, 0.35), withAlpha(colors.surface, 0.75), colors.surface]}
-          locations={[0, 0.5, 0.7, 0.88, 1]}
+          colors={[withAlpha(colors.surface, 0), withAlpha(colors.surface, 0.6), withAlpha(colors.surface, 0.96)]}
+          locations={[0, 0.5, 1]}
           style={StyleSheet.absoluteFill}
         />
       </Animated.View>
-    </View>
+      {/* Velo scuro che cresce con lo scroll: il testo resta protagonista. */}
+      <Animated.View style={[StyleSheet.absoluteFill, { backgroundColor: colors.surface }, dim]} />
+      {/* Fusione verso il fondo pagina, solo da sfondo. */}
+      <Animated.View style={[StyleSheet.absoluteFill, fade]}>
+        <LinearGradient
+          colors={[withAlpha(colors.surface, 0), withAlpha(colors.surface, 0), withAlpha(colors.surface, 0.35), withAlpha(colors.surface, 0.7), colors.surface]}
+          locations={[0, 0.55, 0.72, 0.88, 1]}
+          style={StyleSheet.absoluteFill}
+        />
+      </Animated.View>
+    </Animated.View>
   );
 }
 
 const useStyles = makeStyles((colors) => ({
-  box: { position: "absolute", top: 0, left: 0, overflow: "hidden", backgroundColor: colors.surface },
-  layer: { position: "absolute", top: 0, left: 0, overflow: "hidden", backgroundColor: colors.surfaceSecondary },
+  box: { position: "absolute", overflow: "hidden", borderWidth: 1, backgroundColor: colors.surfaceSecondary },
+  scrim: { position: "absolute", left: 0, right: 0, bottom: 0, height: "62%" },
 }));

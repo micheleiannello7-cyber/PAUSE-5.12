@@ -5,7 +5,7 @@ import {
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { LinearGradient } from "expo-linear-gradient";
 import Animated, {
-  useSharedValue, useAnimatedStyle, useAnimatedScrollHandler, useAnimatedRef, scrollTo,
+  useSharedValue, useAnimatedStyle, useAnimatedScrollHandler, useAnimatedRef,
   runOnJS, interpolate, Extrapolation, SharedValue,
 } from "react-native-reanimated";
 import { useLocalSearchParams, useRouter } from "expo-router";
@@ -21,7 +21,7 @@ import { saveReadingProgress, clearReadingProgress, getReadingProgress, toStoryP
 import { IntroCtaButton } from "@/src/components/intro-cta-button";
 import { SwipeBack } from "@/src/components/swipe-back";
 import { StoryInfoGrid } from "@/src/components/story-info-grid";
-import { ReaderCoverBackdrop } from "@/src/components/reader-cover-backdrop";
+import { ReaderCoverBackdrop, CoverFrame } from "@/src/components/reader-cover-backdrop";
 import { HighlightedTitle } from "@/src/components/highlighted-title";
 import { StoryAudioProvider, AudioSheet, AudioMiniBadge, IntroListenButton } from "@/src/components/story-audio-player";
 import { ReaderHeader, READER_HEADER_H } from "@/src/components/reader-header";
@@ -90,10 +90,15 @@ export default function DeepDive() {
   const heights = useSharedValue<number[]>([]);
   const currentSV = useSharedValue(-1);
   const headerBottom = insets.top + READER_HEADER_H;
-  // Copertina: fascia alta a tutta larghezza (≈40% dello schermo). Lo stesso
-  // livello fisso dietro allo scroll cresce fino a diventare lo sfondo
-  // (ReaderCoverBackdrop) mentre la presentazione scorre via.
-  const coverH = Math.min(360, Math.max(280, Math.round(winH * 0.4)));
+  // Copertina: card grande, arrotondata, staccata dai bordi, con il titolo in
+  // basso. Lo stesso livello fisso dietro allo scroll (ReaderCoverBackdrop)
+  // parte da questa geometria e cresce fino a diventare lo sfondo.
+  const columnW = Math.min(winW, READER_MAX_W);
+  const cardW = columnW - spacing.xl * 2;
+  const cardH = Math.min(Math.round(cardW * 0.9), Math.round(winH * 0.38));
+  const cover: CoverFrame = { top: insets.top + spacing.lg, left: (winW - columnW) / 2 + spacing.xl, width: cardW, height: cardH, radius: 22 };
+  // La trasformazione in sfondo è completa qui.
+  const morphEnd = cover.top + Math.round(cardH * 0.75);
   // Una sezione diventa "corrente" quando il suo inizio supera il primo terzo
   // dello schermo: si aggiorna mentre si scorre, senza bloccare nulla.
   const anchor = Math.round(winH * 0.38);
@@ -109,14 +114,9 @@ export default function DeepDive() {
   // sta tutta, altrimenti allineata in alto sotto la barra (e in più una
   // posizione di riposo alla sua fine, per leggerla tutta). Le posizioni sono
   // passate allo ScrollView nativo (snapToOffsets + disableIntervalMomentum):
-  // un gesto = una sezione, nella direzione del gesto. Per i rilasci lenti
-  // senza slancio, basta aver percorso SNAP_FRACTION del tratto verso la
-  // sezione vicina perché l'app riconosca l'intento e completi da sola lo
-  // scorrimento, centrandola.
-  const SNAP_FRACTION = 0.28;
+  // appena il gesto ha una direzione, lo scorrimento si completa da solo sulla
+  // sezione vicina in quella direzione e la centra — un gesto, un capitolo.
   const [snapOffsets, setSnapOffsets] = useState<number[]>([]);
-  const restsSV = useSharedValue<number[]>([]);
-  const dragStartY = useSharedValue(0);
   const readable = winH - headerBottom;
   const contentH = useRef(0);
 
@@ -140,32 +140,9 @@ export default function DeepDive() {
     }
     const next = [...rests].sort((a, b) => a - b);
     setSnapOffsets((prev) => (prev.length === next.length && prev.every((v, k) => v === next[k]) ? prev : next));
-    restsSV.value = next;
-  }, [offsets, heights, sectionCount, winH, readable, restYFor, restsSV]);
+  }, [offsets, heights, sectionCount, winH, readable, restYFor]);
 
   const onScroll = useAnimatedScrollHandler({
-    onBeginDrag: (e) => { dragStartY.value = e.contentOffset.y; },
-    onEndDrag: (e) => {
-      // Rilascio lento (lo snap nativo aspetterebbe la metà strada): se si è
-      // già percorso più di SNAP_FRACTION verso la sezione vicina, completa.
-      const speed = Math.abs(e.velocity?.y ?? 0);
-      const rests = restsSV.value;
-      if (speed > 0.25 || rests.length < 2) return;
-      const y = e.contentOffset.y;
-      const from = dragStartY.value;
-      const dir = y > from + 2 ? 1 : y < from - 2 ? -1 : 0;
-      if (dir === 0) return;
-      let cur = 0;
-      for (let k = 1; k < rests.length; k++) if (Math.abs(rests[k] - from) < Math.abs(rests[cur] - from)) cur = k;
-      const nb = cur + dir;
-      if (nb < 0 || nb >= rests.length) return;
-      const a = rests[cur];
-      const b = rests[nb];
-      const frac = Math.abs(y - a) / (Math.abs(b - a) || 1);
-      const target = frac >= SNAP_FRACTION ? b : a;
-      autoY.value = target;
-      scrollTo(scrollRef, 0, target, true);
-    },
     onScroll: (e) => {
       const y = e.contentOffset.y;
       scrollY.value = y;
@@ -332,8 +309,8 @@ export default function DeepDive() {
         style={StyleSheet.absoluteFill}
         pointerEvents="none"
       />
-      {/* Copertina: fascia alta a riposo, sfondo cinematografico scorrendo. */}
-      <ReaderCoverBackdrop story={story} scrollY={scrollY} coverH={coverH} screenW={winW} screenH={winH} />
+      {/* Copertina: card arrotondata a riposo, sfondo cinematografico scorrendo. */}
+      <ReaderCoverBackdrop story={story} scrollY={scrollY} frame={cover} screenW={winW} screenH={winH} morphEnd={morphEnd} />
       <StoryAudioProvider key={story.id} storyId={story.id} autoplay={listen === "1" && isPremium}>
         <ReaderHeader
           topInset={insets.top + spacing.xs}
@@ -360,18 +337,13 @@ export default function DeepDive() {
           contentContainerStyle={styles.content}
           testID="deep-dive-scroll"
         >
-          {/* Presentazione (sezione 0): foto copertina con il titolo in basso,
-              poi la scheda opaca con introduzione, griglia informativa e i
-              tasti Leggi / Ascolta. Scorrendo si entra nella lettura. */}
-          <View style={styles.hero} onLayout={onSectionLayout(0)} testID="deep-dive-page-intro">
-            <View style={[styles.coverArea, { height: coverH }]} testID="deep-dive-cover-card">
-              <LinearGradient
-                pointerEvents="none"
-                colors={[withAlpha(colors.surface, 0), withAlpha(colors.surface, 0.55), colors.surface]}
-                locations={[0, 0.55, 1]}
-                style={styles.coverScrim}
-              />
-              <View style={styles.heroTitleWrap} onLayout={(e) => { bigTitleY.value = Math.round(e.nativeEvent.layout.y); }}>
+          {/* Presentazione (sezione 0): spazio per la card copertina (l'immagine
+              vera è il livello fisso dietro) con il titolo in basso, poi
+              introduzione, scheda informativa e i tasti Leggi / Ascolta.
+              Scorrendo, la copertina cresce dietro il testo fino a farsi sfondo. */}
+          <View style={[styles.hero, { paddingTop: cover.top }]} onLayout={onSectionLayout(0)} testID="deep-dive-page-intro">
+            <View style={[styles.coverArea, { height: cardH, width: cardW }]} testID="deep-dive-cover-card">
+              <View style={styles.heroTitleWrap} onLayout={(e) => { bigTitleY.value = cover.top + Math.round(e.nativeEvent.layout.y); }}>
                 <CoverTitle title={story.title} highlight={story.highlight_words} reveal={headerReveal} />
               </View>
             </View>
@@ -399,6 +371,7 @@ export default function DeepDive() {
               chapter={c}
               story={story}
               eyebrow={`${t.chapter} ${c.number}`}
+              current={currentSV}
               onLayout={onSectionLayout(c.number)}
             />
           ))}
@@ -450,25 +423,30 @@ const useStyles = makeStyles((colors: ThemeColors) => ({
   content: { paddingBottom: spacing.lg },
   shareHidden: { position: "absolute", left: -4000, top: 0, width: SHARE_CARD_WIDTH, pointerEvents: "none" },
 
-  // Presentazione: copertina a tutta larghezza (l'immagine vera è il livello
-  // fisso dietro) con il titolo in basso su una sfumatura, poi la scheda opaca.
+  // Presentazione: card copertina (spazio; l'immagine vera è il livello fisso
+  // dietro) con il titolo in basso, poi la scheda con introduzione, info e azioni.
   hero: { width: "100%" },
-  coverArea: { width: "100%", justifyContent: "flex-end" },
-  coverScrim: { position: "absolute", left: 0, right: 0, bottom: 0, height: "70%" },
-  heroTitleWrap: { width: "100%", maxWidth: READER_MAX_W, alignSelf: "center", paddingHorizontal: spacing.xl, paddingBottom: spacing.xs },
+  coverArea: { alignSelf: "center", justifyContent: "flex-end" },
+  heroTitleWrap: { width: "100%", paddingHorizontal: spacing.lg, paddingBottom: spacing.lg },
   coverTitle: {
-    color: colors.textWarm, fontFamily: typography.displayBold, fontSize: 30, lineHeight: 36, letterSpacing: -0.6,
+    color: colors.textWarm, fontFamily: typography.displayBold, fontSize: 29, lineHeight: 35, letterSpacing: -0.6,
     textShadowColor: withAlpha(colors.surface, 0.9), textShadowOffset: { width: 0, height: 2 }, textShadowRadius: 14,
   },
-  sheet: { width: "100%", backgroundColor: colors.surface, paddingBottom: spacing.xxl },
-  sheetInner: { width: "100%", maxWidth: READER_MAX_W, alignSelf: "center", paddingHorizontal: spacing.xl, paddingTop: spacing.lg, gap: spacing.lg + spacing.xs },
+  sheet: { width: "100%", paddingBottom: spacing.xxl },
+  sheetInner: { width: "100%", maxWidth: READER_MAX_W, alignSelf: "center", paddingHorizontal: spacing.xl, paddingTop: spacing.lg + spacing.xs, gap: spacing.lg + spacing.xs },
   introBlock: { gap: spacing.sm },
   // Occhiello "INTRODUZIONE": piccolo e luminoso, sopra l'aggancio.
   introEyebrowRow: { flexDirection: "row", alignItems: "center", alignSelf: "flex-start", gap: spacing.sm },
   introDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: colors.intro, boxShadow: `0px 0px 12px ${withAlpha(colors.intro, 0.85)}` as any },
-  introEyebrow: { color: colors.intro, fontFamily: typography.bodyBold, fontSize: 11.5, letterSpacing: 2.4 },
-  // Aggancio: breve, grande e leggibile.
-  hook: { color: colors.textWarmSecondary, fontFamily: typography.bodyMedium, fontSize: 17, lineHeight: 27, letterSpacing: 0.1 },
+  introEyebrow: {
+    color: colors.intro, fontFamily: typography.bodyBold, fontSize: 11.5, letterSpacing: 2.4,
+    textShadowColor: withAlpha(colors.surface, 0.7), textShadowOffset: { width: 0, height: 1 }, textShadowRadius: 8,
+  },
+  // Aggancio: breve, grande e leggibile anche sopra la copertina che si espande.
+  hook: {
+    color: colors.textWarm, fontFamily: typography.bodyMedium, fontSize: 17, lineHeight: 27, letterSpacing: 0.1,
+    textShadowColor: withAlpha(colors.surface, 0.9), textShadowOffset: { width: 0, height: 1 }, textShadowRadius: 10,
+  },
   ctaRow: { flexDirection: "row", alignItems: "stretch", gap: spacing.sm + 2 },
   cta: { flex: 1 },
 }));
