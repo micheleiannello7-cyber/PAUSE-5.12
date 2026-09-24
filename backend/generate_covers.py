@@ -30,7 +30,7 @@ sys.path.insert(0, str(ROOT_DIR))
 
 from generate_images import MODEL, generate_image  # noqa: E402
 from image_prompts import STORY_IMAGE_PROMPTS, LESSON_IMAGE_PROMPTS  # noqa: E402
-from media_opt import upload_cover  # noqa: E402
+from media_opt import HERO_MAX, QUALITY, THUMB_MAX, encode_webp, upload_cover  # noqa: E402
 
 CONCURRENCY = 3
 STYLE = (
@@ -43,16 +43,17 @@ STYLE = (
 
 
 def save_original(sid: str, raw: bytes) -> Path:
-    """Keep the paid original recoverable by the existing startup cover sync."""
+    """Keep a recoverable Q84 master without adding heavy PNGs to the project."""
     with Image.open(io.BytesIO(raw)) as image:
         image.load()
         extension = {"PNG": "png", "JPEG": "jpg", "WEBP": "webp"}.get(image.format)
         if not extension or min(image.size) < 768 or image.width >= image.height:
             raise ValueError(f"Cover must be a high-resolution portrait: {image.size}")
-    path = ROOT_DIR / "covers" / f"{sid}.{extension}"
+    master = encode_webp(raw, HERO_MAX)
+    path = ROOT_DIR / "covers" / f"{sid}.webp"
     path.parent.mkdir(exist_ok=True)
     temporary = path.with_suffix(path.suffix + ".tmp")
-    temporary.write_bytes(raw)
+    temporary.write_bytes(master)
     temporary.replace(path)
     return path
 
@@ -67,7 +68,7 @@ def prompt_for(doc: dict) -> str:
     if doc.get("kind") == "lesson":
         base = LESSON_IMAGE_PROMPTS.get(sid)
         if base:
-            return base.replace("16:9", "vertical 3:4")
+            return base.replace("16:9", "vertical 3:4") + STYLE
         return (
             f"Conceptual editorial cover photograph for a mini-lesson titled '{doc.get('title', '')}' "
             f"(topic: {doc.get('category_name', '')}). Visual idea: {doc.get('hook', '')} "
@@ -75,7 +76,7 @@ def prompt_for(doc: dict) -> str:
         )
     base = STORY_IMAGE_PROMPTS.get(sid)
     if base:
-        return base.replace("16:9", "vertical 3:4")
+        return base.replace("16:9", "vertical 3:4") + STYLE
     return (
         f"Photorealistic editorial cover photograph for an article titled '{doc.get('title', '')}' "
         f"(topic: {doc.get('category_name', '')}). Visual idea: {doc.get('hook', '')} "
@@ -136,6 +137,9 @@ async def main():
     report_dir.mkdir(parents=True, exist_ok=True)
     report_path = report_dir / f"{run_id}.json"
     report = {"id": run_id, "model": MODEL, "total": total, "status": "running",
+              "started_at": datetime.now(timezone.utc).isoformat(),
+              "encoding": {"format": "webp", "quality": QUALITY,
+                           "hero_max": HERO_MAX, "thumb_max": THUMB_MAX},
               "existing_covers": [d for d in docs if d.get("hero_image_generated") or d.get("hero_image")],
               "generated": [], "errors": []}
 
@@ -182,6 +186,7 @@ async def main():
                         generate_image(f"pause-cover-{run_id}-{sid}", prompt), timeout=240,
                     )
                     source = save_original(sid, raw)
+                    raw = source.read_bytes()
                 fields = await asyncio.to_thread(upload_cover, sid, raw)
                 fields["hero_generated_at"] = datetime.now(timezone.utc).isoformat()
                 # Compare-and-set also protects covers changed while the AI was working.

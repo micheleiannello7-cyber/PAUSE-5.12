@@ -332,3 +332,27 @@ Disabilitati per scelta utente: TTS reale e Stripe (codice presente).
 - Rev. 3: lettore a PAGINE (pagingEnabled + disableIntervalMomentum, ReaderPage alto quanto lo ScrollView, contenuto centrato, scroll interno solo se più alto). Titolo sotto la card (fuori), poi intro, scheda info, CTA. Scheda info: etichetta sopra, icona 3D 54px libera (niente aloni), valore sotto. Icone categoria: endpoint `/api/category-media/{id}?cutout=true` (sfondo nero rimosso, PNG RGBA, cache su disco) usato da CategoryArtMark plain. Barra progresso header via scaleX (niente width animata).
 - Rev. 4 (bug "non vado oltre l'introduzione"): tolti gli ScrollView annidati (ReaderPage è una View; se il contenuto non ci sta chiede tipografia più compatta, livelli 0-2). Aggancio con snapToOffsets = inizio pagine (+ fine contenuto), ultima pagina può crescere. Card copertina dimensionata dallo spazio residuo della pagina (min 150). Tessere info: solo icona 3D 44px + valore, altezza 88, niente etichette.
 - Fix Expo Go: `StyleSheet.absoluteFillObject` non esiste più in RN 0.86 → contenitore CategoryArtwork collassava (icone categoria invisibili su nativo). Sostituito con position absolute esplicito. Fix crash worklet: `withAlpha` nel useAnimatedStyle del backdrop → bordo separato animato in opacità. Cutout categoria ora ritagliato stretto (fit_square 320) → stessa dimensione visiva delle altre icone 3D (chiave cache cutout-v2, url &cut=2).
+
+## Lotto copertine rimanenti — 24/09/2026
+- Utente autorizza esplicitamente tutte le copertine mancanti con il credito API configurato,
+  stesso stile cinematografico delle attuali e WebP qualità84; nessuna sostituzione preesistente.
+- Baseline attuale: 437 contenuti, 326 copertine generate + 47 fotografiche, 64 mancanti.
+- Modello preservato: `gemini-3.1-flash-image-preview`; hero≤1200px, miniature≤600px.
+- Pilot 3/3 completato, verificato visivamente: balena, Via della Seta, pendolo/energia;
+  896×1200, report `memory/cover_batches/5c7da1546ce245039d51fb4f8d4adbc2.json` (baseline373).
+- Lotto restante61 fermato automaticamente dal provider per **Budget has been exceeded**:
+  20 pubblicate, 1 errore budget, le altre non avviate. Nessuna nuova chiamata AI dopo stop.
+  Report `memory/cover_batches/7dbe6ded62644d7e9ccf42931de7f6d0.json` (baseline376).
+- Totale attuale: **23 nuove**, **396/437** coperte (349 generate+47 fotografiche),
+  **41 mancanti**. Non dichiarare completato l'intero catalogo. Nessun cambio chiave/modello.
+- `generate_covers.save_original` conserva da subito un master WebP84 recuperabile in
+  `backend/covers/`, evitando nuovi PNG pesanti. Upload usa il master per digest stabile.
+- `media_opt.encode_webp`: fix pass-through WebP prima di exif_transpose (che perdeva
+  image.format); niente ricompressione hero già conforme, rotazioni EXIF restano rispettate.
+- `render_cover_batch.py`: fogli locali per controllo visivo, nessuna chiamata AI.
+- Due nuove immagini corrette localmente (nessuna AI) con `retouch_cover_batch.py`:
+  rimosso lettering dalla copertina imbarazzo vicario, sfumato artefatto rettangolare nel
+  margine inferiore della scena napoleonica. Solo immagini nel nuovo report, baseline protetta;
+  riferimenti Object Storage/digest e checkpoint aggiornati; sorgenti sempre896×1200 WebP84.
+- P0: verifica finale media/preview in corso; frontend, TTS e Stripe non modificati.
+- P1: le41 mancanti restano sospese per credito esaurito; non riavviare da solo.

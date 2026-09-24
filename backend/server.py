@@ -566,14 +566,8 @@ async def list_stories(
     docs = await db.stories.find(query, {"_id": 0, "chapters": 0}).sort("created_at", -1).to_list(limit)
     return [StoryPreview(**_localize(d, _lang(lang))) for d in docs]
 
-@api_router.get("/discover-next", response_model=StoryPreview)
-async def discover_next(
-    user_id: str = Query(...),
-    interests: Optional[str] = Query(None),
-    exclude: Optional[str] = Query(None, description="comma separated story ids to also exclude"),
-    lang: Optional[str] = Query("it"),
-):
-    """Return ONE story the user hasn't completed yet, filtered by interests."""
+async def _discover_documents(user_id, interests, exclude, count, modes=None):
+    """One state lookup per deck; keep taste, visibility and unread-first rules."""
     state = await db.user_state.find_one({"user_id": user_id}, {"_id": 0})
     completed = state.get("completed_story_ids", []) if state else []
     exclude_ids = list(completed)
@@ -590,30 +584,49 @@ async def discover_next(
     # Early-access: free users get "surprises" only from stories outside the
     # 7-day window; premium sees anything.
     query.update(_early_filter(state))
-    query.update(_kind_filter(state))
+    mode_state = {**(state or {}), "content_modes": modes} if modes else state
+    query.update(_kind_filter(mode_state))
+    explicit = [e.strip() for e in (exclude or "").split(",") if e.strip()]
+    picked = []
+    for _ in range(count):
+        chosen = [doc["id"] for doc in picked]
+        unread = {**query, "id": {"$nin": exclude_ids + chosen}}
+        doc = await _pick_by_taste(unread, state)
+        if not doc:
+            fallback = {**query, "id": {"$nin": explicit + chosen}}
+            doc = await _pick_by_taste(fallback, state)
+        if not doc:
+            break
+        picked.append(doc)
+    return picked
 
-    # Random pick (not deterministic natural order) so the same category feels
-    # fresh every time; the client excludes already-seen ids to avoid repeats.
-    # The hearts ("Mi interessa") gently tilt the odds towards liked topics.
-    async def _sample(q: dict):
-        return await _pick_by_taste(q, state)
 
-    doc = await _sample(query)
-    if not doc:
-        # fallback: allow completed, respect interests still
-        q2: dict = {}
-        if interests:
-            ids = normalize_category_ids([i.strip() for i in interests.split(",") if i.strip()])
-            if ids and "all" not in ids:
-                q2["category_id"] = {"$in": ids}
-        if exclude:
-            q2["id"] = {"$nin": [e.strip() for e in exclude.split(",") if e.strip()]}
-        q2.update(_early_filter(state))
-        q2.update(_kind_filter(state))
-        doc = await _sample(q2)
-    if not doc:
+@api_router.get("/discover-next", response_model=StoryPreview)
+async def discover_next(
+    user_id: str = Query(...), interests: Optional[str] = Query(None),
+    exclude: Optional[str] = Query(None), lang: Optional[str] = Query("it"),
+):
+    docs = await _discover_documents(user_id, interests, exclude, 1)
+    if not docs:
         raise HTTPException(404, "No stories match")
-    return StoryPreview(**_localize(doc, _lang(lang)))
+    return StoryPreview(**_localize(docs[0], _lang(lang)))
+
+
+@api_router.get("/discover-batch", response_model=List[StoryPreview])
+async def discover_batch(
+    user_id: str = Query(...), interests: Optional[str] = Query(None),
+    exclude: Optional[str] = Query(None), count: int = Query(7, ge=1, le=14),
+    modes: Optional[str] = Query(None), lang: Optional[str] = Query("it"),
+):
+    """A stable, unique deck in one request, also used to prewarm onboarding.
+
+    Optional modes only preview format selection; never change premium visibility.
+    """
+    selected_modes = [mode.strip() for mode in modes.split(",")] if modes else None
+    if selected_modes and any(mode not in KIND_BY_MODE for mode in selected_modes):
+        raise HTTPException(422, "Invalid content mode")
+    docs = await _discover_documents(user_id, interests, exclude, count, selected_modes)
+    return [StoryPreview(**_localize(doc, _lang(lang))) for doc in docs]
 
 @api_router.get("/stories/{story_id}", response_model=Story)
 async def get_story(story_id: str, lang: Optional[str] = Query("it")):
@@ -1230,7 +1243,7 @@ async def media_for_story(request: Request, story_id: str, size: str = Query("he
 
 
 @api_router.get("/category-media/{category_id}")
-async def media_for_category(request: Request, category_id: str, cutout: bool = False):
+async def media_for_category(request: Request, category_id: str, cutout: bool = False, tight: bool = False):
     """Serve the illustration for a category. `cutout=true` returns the object
     alone (black studio background keyed out, PNG RGBA), for tinted surfaces."""
     collection = db.design_assets if category_id == "all" else db.categories
@@ -1243,8 +1256,8 @@ async def media_for_category(request: Request, category_id: str, cutout: bool = 
     content, ctype = await cached_object(path)
     if cutout:
         from media_opt import cutout_png
-        path = f"{path}#cutout-v2"
-        content, ctype = await cached_derived(path, lambda: (cutout_png(content), "image/png"))
+        path = f"{path}#cutout-tight-v1" if tight else f"{path}#cutout-v2"
+        content, ctype = await cached_derived(path, lambda: (cutout_png(content, tight=tight), "image/png"))
     return _image_response(request, path, content, ctype)
 
 

@@ -17,11 +17,13 @@ QUALITY = 84
 
 
 def encode_webp(raw: bytes, max_side: int) -> bytes:
-    image = ImageOps.exif_transpose(Image.open(io.BytesIO(raw)))
+    image = Image.open(io.BytesIO(raw))
     # Sorgente già WebP entro il limite (es. backend/covers pre-ottimizzate):
     # nessuna ricompressione, si usa il file così com'è.
-    if image.format == "WEBP" and max(image.size) <= max_side:
+    if (image.format == "WEBP" and max(image.size) <= max_side
+            and image.getexif().get(274, 1) == 1):
         return raw
+    image = ImageOps.exif_transpose(image)
     image = image.convert("RGB") if image.mode not in ("RGB", "RGBA") else image
     image.thumbnail((max_side, max_side), Image.Resampling.LANCZOS)
     out = io.BytesIO()
@@ -29,7 +31,7 @@ def encode_webp(raw: bytes, max_side: int) -> bytes:
     return out.getvalue()
 
 
-def cutout_png(raw: bytes) -> bytes:
+def cutout_png(raw: bytes, tight: bool = False) -> bytes:
     """Oggetto 3D su sfondo nero → PNG RGBA con lo sfondo reso trasparente
     (stesso keying delle icone CTA), per usarlo sopra superfici colorate."""
     from generate_cta_icons import fit_square, key_out_background
@@ -37,7 +39,16 @@ def cutout_png(raw: bytes) -> bytes:
     out = io.BytesIO()
     # Ritaglio stretto sull'oggetto (stesso margine delle icone CTA), così
     # occupa lo stesso spazio delle altre icone 3D.
-    fit_square(key_out_background(image), size=320).save(out, "PNG", optimize=True)
+    cutout = key_out_background(image)
+    if tight:
+        bbox = cutout.getchannel("A").point(lambda alpha: 255 if alpha > 8 else 0).getbbox()
+        if bbox:
+            cutout = cutout.crop(bbox)
+        cutout = ImageOps.expand(cutout, border=max(2, round(max(cutout.size) * 0.015)))
+        cutout.thumbnail((320, 320), Image.Resampling.LANCZOS)
+    else:
+        cutout = fit_square(cutout, size=320)
+    cutout.save(out, "PNG", optimize=True)
     return out.getvalue()
 
 

@@ -103,6 +103,23 @@
 #====================================================================================================
 
 # Current cover-generation task (supersedes the older UI entries below):
+# CURRENT 2026-09-24 batch: user explicitly authorized ALL missing covers at WebP84,
+# same existing model/style, preserve pre-existing373. Pilot3 + main20 = 23 new covers.
+# Provider returned explicit Budget has been exceeded; main batch stopped safely,
+# 41 still missing, NO further AI generation authorized during verification.
+# Current reports ONLY: memory/cover_batches/5c7da1546ce245039d51fb4f8d4adbc2.json
+# (baseline373, pilot3), 7dbe6ded62644d7e9ccf42931de7f6d0.json (baseline376, new20).
+# Needs testing: 46 new media hero/thumb endpoints decode WebP896x1200/448x600;
+# source files <=1200 Q84; existing373 refs preserved; counts396/437; dry-run41;
+# lock + budget stop; no extra AI process; no API mocks, no auth.
+# media_opt pass-through fix: check WebP format BEFORE exif_transpose, preserving
+# identical hero bytes rather than recompressing. Check needed resize/EXIF still works.
+# Two NEW covers retouched locally (zero AI calls) and report updated: embarrassment
+# lettering removed, driving-side cover black footer rectangle blended away.
+# New sources retained as .webp directly; Q84 rather than accumulating large PNGs.
+# Preview smoke already passed: onboarding390x844 + new whale reader actual hero.
+# Frontend, TTS/Stripe unchanged. Old regression tests refer to historical PNG sources
+# converted to WebP in previous session; scope baseline for THIS task is373, not179.
 # User: "Una volta terminato, genera quante più copertine puoi con stessa qualità di quelle già esistenti, ho ricaricato la chiave api"
 # Confirmed: use available API credit for missing covers, preserve existing covers, TTS/Stripe off.
 # backend implemented / needs_retesting: generate_covers.py checkpointed batch, source originals
