@@ -100,8 +100,13 @@ export default function DeepDive() {
   // parte da questa geometria e cresce fino a diventare lo sfondo.
   const columnW = Math.min(winW, READER_MAX_W);
   const cardW = columnW - spacing.xl * 2;
-  const cardH = Math.min(Math.round(cardW * 0.72), Math.round(winH * 0.3));
-  const cover: CoverFrame = { top: insets.top + spacing.lg, left: (winW - columnW) / 2 + spacing.xl, width: cardW, height: cardH, radius: 22 };
+  // Altezza della card ricavata dallo spazio che resta nella pagina dopo
+  // titolo, introduzione, scheda info e tasti (≈ 440pt): così la
+  // presentazione sta sempre in una pagina, anche su schermi bassi.
+  const coverTop = insets.top + spacing.lg;
+  const pageBottom = insets.bottom + spacing.lg;
+  const cardH = Math.max(150, Math.min(Math.round(cardW * 0.72), pageH - coverTop - pageBottom - 440));
+  const cover: CoverFrame = { top: coverTop, left: (winW - columnW) / 2 + spacing.xl, width: cardW, height: cardH, radius: 22 };
   // La trasformazione in sfondo è completa qui.
   const morphEnd = cover.top + Math.round(cardH * 0.75);
   // Ultimo scroll programmatico (apertura su un capitolo, ripresa): solo un
@@ -140,6 +145,9 @@ export default function DeepDive() {
     scrollRef.current?.scrollTo({ y: target, animated });
   }, [pageH, scrollRef, autoY]);
 
+  // Punti di aggancio: l'inizio di ogni pagina (l'ultima può essere più alta:
+  // la fine del contenuto è comunque un punto di arrivo, snapToEnd).
+  const snapOffsets = Array.from({ length: sectionCount }, (_, i) => i * pageH);
   const onScrollLayout = (e: LayoutChangeEvent) => {
     const h = Math.round(e.nativeEvent.layout.height);
     if (h > 0 && h !== pageH) { setPageH(h); pageHSV.value = h; }
@@ -286,8 +294,9 @@ export default function DeepDive() {
           scrollEventThrottle={16}
           onScrollBeginDrag={markTouched}
           onLayout={onScrollLayout}
-          pagingEnabled
+          snapToOffsets={snapOffsets}
           disableIntervalMomentum
+          decelerationRate="fast"
           showsVerticalScrollIndicator={false}
           style={styles.scroll}
           testID="deep-dive-scroll"
@@ -296,7 +305,8 @@ export default function DeepDive() {
               vera è il livello fisso dietro), titolo subito sotto, poi
               introduzione, scheda informativa e i tasti Leggi / Ascolta.
               Scorrendo, la copertina cresce dietro il testo fino a farsi sfondo. */}
-          <ReaderPage height={pageH} paddingTop={cover.top} paddingBottom={insets.bottom + spacing.lg} center={false} testID="deep-dive-page-intro">
+          <ReaderPage height={pageH} paddingTop={cover.top} paddingBottom={pageBottom} center={false} testID="deep-dive-page-intro">
+            {(compact) => (<>
             <View style={[styles.coverArea, { height: cardH, width: cardW }]} testID="deep-dive-cover-card" />
             <View style={styles.sheet}>
               <View style={styles.sheetInner}>
@@ -308,7 +318,7 @@ export default function DeepDive() {
                     <View style={styles.introDot} />
                     <Text style={styles.introEyebrow} testID="reader-intro-eyebrow">{t.deep_intro}</Text>
                   </View>
-                  <Text style={styles.hook} testID="deep-dive-hook">{story.hook}</Text>
+                  <Text style={[styles.hook, compact === 1 && styles.hookCompact, compact === 2 && styles.hookTiny]} testID="deep-dive-hook">{story.hook}</Text>
                 </View>
                 <StoryInfoGrid story={story} minutes={story.deep_dive_time_min} />
                 <View style={styles.ctaRow}>
@@ -317,15 +327,16 @@ export default function DeepDive() {
                 </View>
               </View>
             </View>
+            </>)}
           </ReaderPage>
 
           {story.chapters.map((c) => (
-            <ReaderPage key={c.number} height={pageH} paddingTop={headerBottom} paddingBottom={insets.bottom + spacing.lg} testID={`deep-dive-page-chapter-${c.number}`}>
-              <ChapterSection chapter={c} story={story} eyebrow={`${t.chapter} ${c.number}`} current={currentSV} />
+            <ReaderPage key={c.number} height={pageH} paddingTop={headerBottom} paddingBottom={pageBottom} testID={`deep-dive-page-chapter-${c.number}`}>
+              {(compact) => <ChapterSection chapter={c} story={story} eyebrow={`${t.chapter} ${c.number}`} current={currentSV} compact={compact} />}
             </ReaderPage>
           ))}
 
-          <ReaderPage height={pageH} paddingTop={headerBottom} paddingBottom={0} testID="deep-dive-page-end">
+          <ReaderPage height={pageH} paddingTop={headerBottom} paddingBottom={0} grow testID="deep-dive-page-end">
             <ReaderEnding
               story={story}
               liked={liked}
@@ -396,6 +407,8 @@ const useStyles = makeStyles((colors: ThemeColors) => ({
     color: colors.textWarm, fontFamily: typography.bodyMedium, fontSize: 17, lineHeight: 27, letterSpacing: 0.1,
     textShadowColor: withAlpha(colors.surface, 0.9), textShadowOffset: { width: 0, height: 1 }, textShadowRadius: 10,
   },
+  hookCompact: { fontSize: 15.5, lineHeight: 24 },
+  hookTiny: { fontSize: 14, lineHeight: 21 },
   ctaRow: { flexDirection: "row", alignItems: "stretch", gap: spacing.sm + 2 },
   cta: { flex: 1 },
 }));

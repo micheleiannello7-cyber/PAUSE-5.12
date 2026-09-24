@@ -56,8 +56,8 @@ export function stripStepPrefix(title: string): string {
 }
 
 export function ChapterSection({
-  chapter, story, eyebrow, current,
-}: { chapter: Chapter; story: Story; eyebrow: string; current: SharedValue<number> }) {
+  chapter, story, eyebrow, current, compact = 0,
+}: { chapter: Chapter; story: Story; eyebrow: string; current: SharedValue<number>; /** 0 normale · 1 · 2 = tipografia più compatta per stare in una pagina. */ compact?: number }) {
   const styles = useStyles();
   const { colors } = useTheme();
   const glow = chapter.glow_color || colors.cyan;
@@ -76,11 +76,11 @@ export function ChapterSection({
       <HighlightedTitle
         title={stripStepPrefix(chapter.title)}
         highlight={story.highlight_words}
-        style={styles.title}
+        style={[styles.title, compact === 1 && styles.titleCompact, compact === 2 && styles.titleTiny]}
       />
       <View style={styles.body}>
         {splitParagraphs(chapter.body).map((p, i) => (
-          <Text key={i} style={styles.paragraph}>{p}</Text>
+          <Text key={i} style={[styles.paragraph, compact === 1 && styles.paragraphCompact, compact === 2 && styles.paragraphTiny]}>{p}</Text>
         ))}
       </View>
     </Animated.View>
@@ -101,6 +101,10 @@ const useStyles = makeStyles((colors) => ({
   title: {
     color: colors.textWarm, fontFamily: typography.displayBold, fontSize: 27, lineHeight: 34, letterSpacing: -0.5,
   },
+  titleCompact: { fontSize: 24, lineHeight: 30 },
+  titleTiny: { fontSize: 22, lineHeight: 27 },
   body: { gap: spacing.md + 2, marginTop: spacing.xs },
   paragraph: { color: colors.textWarmSecondary, fontFamily: typography.body, fontSize: 17.5, lineHeight: 31, letterSpacing: 0.1 },
+  paragraphCompact: { fontSize: 16, lineHeight: 27 },
+  paragraphTiny: { fontSize: 14.5, lineHeight: 24 },
 }));
