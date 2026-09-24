@@ -5,7 +5,7 @@ import {
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { LinearGradient } from "expo-linear-gradient";
 import Animated, {
-  useSharedValue, useAnimatedStyle, useAnimatedScrollHandler, useAnimatedRef, useAnimatedReaction, scrollTo, withSpring, cancelAnimation,
+  useSharedValue, useAnimatedStyle, useAnimatedScrollHandler, useAnimatedRef, scrollTo,
   runOnJS, interpolate, Extrapolation, SharedValue,
 } from "react-native-reanimated";
 import { useLocalSearchParams, useRouter } from "expo-router";
@@ -21,7 +21,7 @@ import { saveReadingProgress, clearReadingProgress, getReadingProgress, toStoryP
 import { IntroCtaButton } from "@/src/components/intro-cta-button";
 import { SwipeBack } from "@/src/components/swipe-back";
 import { StoryInfoGrid } from "@/src/components/story-info-grid";
-import { ReaderMorphCover, CoverFrame } from "@/src/components/reader-morph-cover";
+import { ReaderCoverBackdrop } from "@/src/components/reader-cover-backdrop";
 import { HighlightedTitle } from "@/src/components/highlighted-title";
 import { StoryAudioProvider, AudioSheet, AudioMiniBadge, IntroListenButton } from "@/src/components/story-audio-player";
 import { ReaderHeader, READER_HEADER_H } from "@/src/components/reader-header";
@@ -90,16 +90,10 @@ export default function DeepDive() {
   const heights = useSharedValue<number[]>([]);
   const currentSV = useSharedValue(-1);
   const headerBottom = insets.top + READER_HEADER_H;
-  // Geometria della card copertina nella presentazione: grande, arrotondata,
-  // staccata dai bordi. La stessa geometria è il punto di partenza dello
-  // sfondo che si trasforma (ReaderMorphCover).
-  const columnW = Math.min(winW, READER_MAX_W);
-  const cardW = columnW - spacing.xl * 2;
-  // Rettangolare come la card della Home (angoli 19), mai oltre il 42% dello schermo.
-  const cardH = Math.min(Math.round(cardW * 0.8), Math.round(winH * 0.42));
-  const cover: CoverFrame = { top: insets.top + spacing.lg, left: (winW - columnW) / 2 + spacing.xl, width: cardW, height: cardH, radius: 19 };
-  // La card si aggancia in alto e finisce di allargarsi qui.
-  const morphEnd = cover.top + Math.round(cardH * 0.7);
+  // Copertina: fascia alta a tutta larghezza (≈40% dello schermo). Lo stesso
+  // livello fisso dietro allo scroll cresce fino a diventare lo sfondo
+  // (ReaderCoverBackdrop) mentre la presentazione scorre via.
+  const coverH = Math.min(360, Math.max(280, Math.round(winH * 0.4)));
   // Una sezione diventa "corrente" quando il suo inizio supera il primo terzo
   // dello schermo: si aggiorna mentre si scorre, senza bloccare nulla.
   const anchor = Math.round(winH * 0.38);
@@ -110,113 +104,67 @@ export default function DeepDive() {
   const touchedSV = useSharedValue(false);
   const markTouched = () => { touchedRef.current = true; touchedSV.value = true; };
 
-  // Aggancio ai capitoli: a fine gesto (o fine inerzia) il capitolo più vicino
-  // si allinea da solo sotto la barra con una molla leggera. Ogni capitolo ha
-  // almeno l'altezza dello schermo, così quando è allineato non si vede nulla
-  // del capitolo prima o dopo. Se il lettore è nel mezzo di un capitolo lungo
-  // (lontano da ogni inizio), lo scroll resta libero.
-  const snapping = useSharedValue(false);
-  const snapY = useSharedValue(0);
-  const maxScroll = useSharedValue(0);
-  const snapIndex = useSharedValue(0);   // ultima sezione agganciata (centrata)
-  const dragStartY = useSharedValue(0);  // offset all'inizio del gesto → direzione
-  const flingSpeed = useSharedValue(0);  // |velocità| a fine trascinamento → soglia
-  useAnimatedReaction(
-    () => snapY.value,
-    (v, prev) => { if (snapping.value && v !== prev) scrollTo(scrollRef, 0, v, false); },
-  );
+  // --- Aggancio ai capitoli (paging) ---
+  // Ogni sezione ha una posizione "di riposo": centrata nello schermo se ci
+  // sta tutta, altrimenti allineata in alto sotto la barra (e in più una
+  // posizione di riposo alla sua fine, per leggerla tutta). Le posizioni sono
+  // passate allo ScrollView nativo (snapToOffsets + disableIntervalMomentum):
+  // un gesto = una sezione, nella direzione del gesto. Per i rilasci lenti
+  // senza slancio, basta aver percorso SNAP_FRACTION del tratto verso la
+  // sezione vicina perché l'app riconosca l'intento e completi da sola lo
+  // scorrimento, centrandola.
+  const SNAP_FRACTION = 0.28;
+  const [snapOffsets, setSnapOffsets] = useState<number[]>([]);
+  const restsSV = useSharedValue<number[]>([]);
+  const dragStartY = useSharedValue(0);
+  const readable = winH - headerBottom;
+  const contentH = useRef(0);
 
-  // Posizione di riposo che CENTRA verticalmente la sezione i nello schermo.
-  // Le sezioni più alte dello schermo si allineano invece con l'inizio sotto la
-  // barra (si legge dall'alto). Restituisce l'offset di scroll (clampato).
-  const restYFor = (i: number): number => {
-    "worklet";
+  const restYFor = useCallback((y: number, h: number): number => {
+    if (h === 0 || h > readable) return Math.max(0, y - headerBottom - spacing.md); // alta: inizio sotto la barra
+    return Math.max(0, y + h / 2 - (winH + headerBottom) / 2);                     // corta: centrata
+  }, [readable, headerBottom, winH]);
+
+  const recomputeRests = useCallback(() => {
     const offs = offsets.value;
     const hs = heights.value;
-    const y = offs[i];
-    if (y == null || y < 0) return 0;
-    const readable = winH - headerBottom;
-    const h = hs[i] ?? 0;
-    let target: number;
-    if (h === 0 || h > readable) target = y - headerBottom - spacing.md;      // alta: inizio sotto la barra
-    else target = y + h / 2 - (winH + headerBottom) / 2;                       // corta: centrata
-    return Math.min(maxScroll.value, Math.max(0, target));
-  };
-
-  // Aggancio a molla: a fine gesto/inerzia la sezione bersaglio si CENTRA da
-  // sola con un piccolo rimbalzo organico (leggero overshoot poi si assesta).
-  // Un fling medio-lungo che supera il ~40% verso la sezione adiacente completa
-  // il passaggio; un piccolo trascinamento ricentra la sezione corrente.
-  const settle = (y: number, speed: number, _vh: number) => {
-    "worklet";
-    const offs = offsets.value;
-    const hs = heights.value;
-    const n = offs.length;
-    if (n === 0) return;
-    // Sezione più alta dello schermo (es. "Da ricordare" in fondo, o un
-    // capitolo lungo): se il lettore è già DENTRO, oltre l'inizio, lo scroll
-    // resta libero — nessun ricentraggio né rimbalzo. Ci si aggancia solo
-    // vicino a un confine tra sezioni.
-    const readable = winH - headerBottom;
-    for (let i = 0; i < n; i++) {
-      if (offs[i] < 0) continue;
+    if (offs.length !== sectionCount || offs.some((o) => o < 0)) return;
+    const maxY = Math.max(0, contentH.current - winH);
+    const rests = new Set<number>([0]);
+    for (let i = 1; i < sectionCount; i++) {
+      const y = offs[i];
       const h = hs[i] ?? 0;
-      if (h <= readable) continue;
-      const startY = restYFor(i);
-      const endY = Math.min(maxScroll.value, offs[i] + h - winH);
-      if (y > startY + 12 && (i === n - 1 || y < endY - 12)) { snapIndex.value = i; return; }
+      rests.add(Math.min(maxY, restYFor(y, h)));
+      // Sezione più alta dello schermo: anche la sua fine è un punto di riposo.
+      if (h > readable) rests.add(Math.min(maxY, Math.max(0, y + h - winH + spacing.lg)));
     }
-    // In fondo alla pagina non c'è più nulla da allineare.
-    if (y >= maxScroll.value - 12) { snapIndex.value = n - 1; return; }
-    // Posizioni di riposo: la copertina (y = 0, solo titolo) e ogni sezione.
-    // Si sceglie la più vicina alla posizione attuale (l'inerzia ha già
-    // fatto la maggior parte del lavoro).
-    const rests: number[] = [0];
-    const owners: number[] = [0];
-    for (let i = 0; i < n; i++) {
-      if (offs[i] < 0) continue;
-      rests.push(restYFor(i));
-      owners.push(i);
-    }
-    let best = 0;
-    let bestDist = Infinity;
-    for (let k = 0; k < rests.length; k++) {
-      const d = Math.abs(rests[k] - y);
-      if (d < bestDist) { bestDist = d; best = k; }
-    }
-    // Direzione del gesto e soglia: più forte è il fling, meno strada serve
-    // per avanzare (forte → 12%, medio → 40%, lento → 50%).
-    const dir = y >= dragStartY.value ? 1 : -1;
-    const thr = speed > 1.6 ? 0.12 : speed > 0.5 ? 0.4 : 0.5;
-    const nb = best + dir;
-    if (nb >= 0 && nb < rests.length) {
-      const a = rests[best];
-      const b = rests[nb];
-      const denom = Math.abs(b - a) || 1;
-      const frac = Math.abs(y - a) / denom;
-      if (frac >= thr && ((dir > 0 && b >= a) || (dir < 0 && b <= a))) best = nb;
-    }
-    const target = rests[best];
-    snapIndex.value = owners[best];
-    autoY.value = target;
-    snapping.value = true;
-    snapY.value = y;
-    // Molla sotto-smorzata → micro-rimbalzo tattile all'arrivo.
-    snapY.value = withSpring(target, { damping: 14, stiffness: 130, mass: 0.9 }, (done) => { if (done) snapping.value = false; });
-  };
+    const next = [...rests].sort((a, b) => a - b);
+    setSnapOffsets((prev) => (prev.length === next.length && prev.every((v, k) => v === next[k]) ? prev : next));
+    restsSV.value = next;
+  }, [offsets, heights, sectionCount, winH, readable, restYFor, restsSV]);
 
   const onScroll = useAnimatedScrollHandler({
-    onBeginDrag: (e) => { snapping.value = false; cancelAnimation(snapY); dragStartY.value = e.contentOffset.y; },
+    onBeginDrag: (e) => { dragStartY.value = e.contentOffset.y; },
     onEndDrag: (e) => {
+      // Rilascio lento (lo snap nativo aspetterebbe la metà strada): se si è
+      // già percorso più di SNAP_FRACTION verso la sezione vicina, completa.
       const speed = Math.abs(e.velocity?.y ?? 0);
-      flingSpeed.value = speed;
-      // Rilascio lento (nessuna inerzia in arrivo): aggancia subito.
-      if (speed <= 0.15) settle(e.contentOffset.y, speed, e.layoutMeasurement.height);
-      // Altrimenti lascia scorrere l'inerzia nativa e aggancia a fine slancio.
-    },
-    onMomentumEnd: (e) => {
-      settle(e.contentOffset.y, flingSpeed.value, e.layoutMeasurement.height);
-      flingSpeed.value = 0;
+      const rests = restsSV.value;
+      if (speed > 0.25 || rests.length < 2) return;
+      const y = e.contentOffset.y;
+      const from = dragStartY.value;
+      const dir = y > from + 2 ? 1 : y < from - 2 ? -1 : 0;
+      if (dir === 0) return;
+      let cur = 0;
+      for (let k = 1; k < rests.length; k++) if (Math.abs(rests[k] - from) < Math.abs(rests[cur] - from)) cur = k;
+      const nb = cur + dir;
+      if (nb < 0 || nb >= rests.length) return;
+      const a = rests[cur];
+      const b = rests[nb];
+      const frac = Math.abs(y - a) / (Math.abs(b - a) || 1);
+      const target = frac >= SNAP_FRACTION ? b : a;
+      autoY.value = target;
+      scrollTo(scrollRef, 0, target, true);
     },
     onScroll: (e) => {
       const y = e.contentOffset.y;
@@ -226,7 +174,6 @@ export default function DeepDive() {
         runOnJS(markTouched)();
       }
       const range = Math.max(1, e.contentSize.height - e.layoutMeasurement.height);
-      maxScroll.value = range;
       progress.value = Math.max(0, Math.min(1, y / range));
       // La barra diventa vetro insieme al titolo piccolo (stessa soglia).
       const titleTop = bigTitleY.value - headerBottom;
@@ -247,19 +194,12 @@ export default function DeepDive() {
   });
 
   const scrollToSection = useCallback((i: number, animated = true) => {
-    const offs = offsets.value;
-    const hs = heights.value;
-    const y = offs[i];
+    const y = offsets.value[i];
     if (y == null || y < 0) return;
-    const readable = winH - headerBottom;
-    const h = hs[i] ?? 0;
-    const target = (h === 0 || h > readable)
-      ? Math.max(0, y - headerBottom - spacing.md)          // alta: inizio sotto la barra
-      : Math.max(0, y + h / 2 - (winH + headerBottom) / 2); // corta: centrata
+    const target = restYFor(y, heights.value[i] ?? 0);
     autoY.value = target;
-    snapIndex.value = i;
     scrollRef.current?.scrollTo({ y: target, animated });
-  }, [offsets, heights, scrollRef, headerBottom, winH, autoY, snapIndex]);
+  }, [offsets, heights, scrollRef, restYFor, autoY]);
 
   const onSectionLayout = (i: number) => (e: LayoutChangeEvent) => {
     const y = Math.round(e.nativeEvent.layout.y);
@@ -271,11 +211,13 @@ export default function DeepDive() {
     nh[i] = h;
     offsets.value = next;
     heights.value = nh;
+    recomputeRests();
     if (pendingScroll.current === i) {
       pendingScroll.current = null;
       scrollToSection(i, false);
     }
   };
+  const onContentSizeChange = (_w: number, h: number) => { contentH.current = h; recomputeRests(); };
 
   // Riprende dalla sezione in cui il lettore aveva lasciato questa storia.
   useEffect(() => {
@@ -390,8 +332,8 @@ export default function DeepDive() {
         style={StyleSheet.absoluteFill}
         pointerEvents="none"
       />
-      {/* Copertina: card arrotondata a riposo, sfondo cinematografico scorrendo. */}
-      <ReaderMorphCover story={story} scrollY={scrollY} frame={cover} screenW={winW} screenH={winH} morphEnd={morphEnd} />
+      {/* Copertina: fascia alta a riposo, sfondo cinematografico scorrendo. */}
+      <ReaderCoverBackdrop story={story} scrollY={scrollY} coverH={coverH} screenW={winW} screenH={winH} />
       <StoryAudioProvider key={story.id} storyId={story.id} autoplay={listen === "1" && isPremium}>
         <ReaderHeader
           topInset={insets.top + spacing.xs}
@@ -410,33 +352,44 @@ export default function DeepDive() {
           onScroll={onScroll}
           scrollEventThrottle={16}
           onScrollBeginDrag={markTouched}
+          onContentSizeChange={onContentSizeChange}
+          snapToOffsets={snapOffsets.length > 1 ? snapOffsets : undefined}
+          disableIntervalMomentum
+          decelerationRate="fast"
           showsVerticalScrollIndicator={false}
           contentContainerStyle={styles.content}
           testID="deep-dive-scroll"
         >
-          {/* Presentazione (sezione 0): spazio per la card copertina (l'immagine
-              vera è il livello fisso dietro), titolo intero, introduzione,
-              griglia informativa e azioni. Scorrendo si entra nella lettura. */}
-          <View
-            style={[styles.section, styles.hero, { paddingTop: cover.top }]}
-            onLayout={onSectionLayout(0)}
-            testID="deep-dive-page-intro"
-          >
-            <View style={{ height: cardH }} testID="deep-dive-cover-card" />
-            <View style={styles.heroTitleWrap} onLayout={(e) => { bigTitleY.value = Math.round(e.nativeEvent.layout.y); }}>
-              <CoverTitle title={story.title} highlight={story.highlight_words} reveal={headerReveal} />
-            </View>
-            <View style={styles.introBlock}>
-              <View style={styles.introEyebrowRow}>
-                <View style={styles.introDot} />
-                <Text style={styles.introEyebrow} testID="reader-intro-eyebrow">{t.deep_intro}</Text>
+          {/* Presentazione (sezione 0): foto copertina con il titolo in basso,
+              poi la scheda opaca con introduzione, griglia informativa e i
+              tasti Leggi / Ascolta. Scorrendo si entra nella lettura. */}
+          <View style={styles.hero} onLayout={onSectionLayout(0)} testID="deep-dive-page-intro">
+            <View style={[styles.coverArea, { height: coverH }]} testID="deep-dive-cover-card">
+              <LinearGradient
+                pointerEvents="none"
+                colors={[withAlpha(colors.surface, 0), withAlpha(colors.surface, 0.55), colors.surface]}
+                locations={[0, 0.55, 1]}
+                style={styles.coverScrim}
+              />
+              <View style={styles.heroTitleWrap} onLayout={(e) => { bigTitleY.value = Math.round(e.nativeEvent.layout.y); }}>
+                <CoverTitle title={story.title} highlight={story.highlight_words} reveal={headerReveal} />
               </View>
-              <Text style={styles.hook} testID="deep-dive-hook">{story.hook}</Text>
             </View>
-            <StoryInfoGrid story={story} minutes={story.deep_dive_time_min} />
-            <View style={styles.ctaRow}>
-              <IntroCtaButton icon="book" label={t.deep_start} onPress={() => { markTouched(); scrollToSection(1); }} testID="deep-dive-start" style={styles.cta} />
-              {isPremium ? <IntroListenButton onListen={openAudio} style={styles.cta} /> : null}
+            <View style={styles.sheet}>
+              <View style={styles.sheetInner}>
+                <View style={styles.introBlock}>
+                  <View style={styles.introEyebrowRow}>
+                    <View style={styles.introDot} />
+                    <Text style={styles.introEyebrow} testID="reader-intro-eyebrow">{t.deep_intro}</Text>
+                  </View>
+                  <Text style={styles.hook} testID="deep-dive-hook">{story.hook}</Text>
+                </View>
+                <StoryInfoGrid story={story} minutes={story.deep_dive_time_min} />
+                <View style={styles.ctaRow}>
+                  <IntroCtaButton icon="book" label={t.deep_start} onPress={() => { markTouched(); scrollToSection(1); }} testID="deep-dive-start" style={styles.cta} />
+                  {isPremium ? <IntroListenButton onListen={openAudio} style={styles.cta} /> : null}
+                </View>
+              </View>
             </View>
           </View>
 
@@ -446,7 +399,6 @@ export default function DeepDive() {
               chapter={c}
               story={story}
               eyebrow={`${t.chapter} ${c.number}`}
-              minHeight={winH - headerBottom - spacing.md}
               onLayout={onSectionLayout(c.number)}
             />
           ))}
@@ -488,7 +440,7 @@ function CoverTitle({ title, highlight, reveal }: { title: string; highlight: st
   const fade = useAnimatedStyle(() => ({ opacity: 1 - reveal.value }));
   return (
     <Animated.View style={fade}>
-      <HighlightedTitle title={title} highlight={highlight} style={styles.coverTitle} testID="deep-dive-cover-title" />
+      <HighlightedTitle title={title} highlight={highlight} numberOfLines={3} adjustsFontSizeToFit minimumFontScale={0.8} style={styles.coverTitle} testID="deep-dive-cover-title" />
     </Animated.View>
   );
 }
@@ -498,27 +450,25 @@ const useStyles = makeStyles((colors: ThemeColors) => ({
   content: { paddingBottom: spacing.lg },
   shareHidden: { position: "absolute", left: -4000, top: 0, width: SHARE_CARD_WIDTH, pointerEvents: "none" },
 
-  section: { width: "100%", maxWidth: READER_MAX_W, alignSelf: "center", paddingHorizontal: spacing.xl },
-  // Presentazione: card (spazio), titolo, introduzione, griglia, azioni.
-  hero: { gap: spacing.xl, paddingBottom: spacing.xxl + spacing.md },
-  heroTitleWrap: { marginTop: -spacing.xs },
+  // Presentazione: copertina a tutta larghezza (l'immagine vera è il livello
+  // fisso dietro) con il titolo in basso su una sfumatura, poi la scheda opaca.
+  hero: { width: "100%" },
+  coverArea: { width: "100%", justifyContent: "flex-end" },
+  coverScrim: { position: "absolute", left: 0, right: 0, bottom: 0, height: "70%" },
+  heroTitleWrap: { width: "100%", maxWidth: READER_MAX_W, alignSelf: "center", paddingHorizontal: spacing.xl, paddingBottom: spacing.xs },
   coverTitle: {
-    color: colors.textWarm, fontFamily: typography.displayBold, fontSize: 32, lineHeight: 38, letterSpacing: -0.7,
+    color: colors.textWarm, fontFamily: typography.displayBold, fontSize: 30, lineHeight: 36, letterSpacing: -0.6,
     textShadowColor: withAlpha(colors.surface, 0.9), textShadowOffset: { width: 0, height: 2 }, textShadowRadius: 14,
   },
-  introBlock: { gap: spacing.sm + 2 },
+  sheet: { width: "100%", backgroundColor: colors.surface, paddingBottom: spacing.xxl },
+  sheetInner: { width: "100%", maxWidth: READER_MAX_W, alignSelf: "center", paddingHorizontal: spacing.xl, paddingTop: spacing.lg, gap: spacing.lg + spacing.xs },
+  introBlock: { gap: spacing.sm },
   // Occhiello "INTRODUZIONE": piccolo e luminoso, sopra l'aggancio.
   introEyebrowRow: { flexDirection: "row", alignItems: "center", alignSelf: "flex-start", gap: spacing.sm },
   introDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: colors.intro, boxShadow: `0px 0px 12px ${withAlpha(colors.intro, 0.85)}` as any },
-  introEyebrow: {
-    color: colors.intro, fontFamily: typography.bodyBold, fontSize: 12, letterSpacing: 2.4,
-    textShadowColor: withAlpha(colors.surface, 0.7), textShadowOffset: { width: 0, height: 1 }, textShadowRadius: 8,
-  },
-  // Aggancio: breve, grande e leggibile, sopra lo sfondo che si scurisce.
-  hook: {
-    color: colors.textWarm, fontFamily: typography.bodyMedium, fontSize: 19, lineHeight: 30, letterSpacing: 0.1,
-    textShadowColor: withAlpha(colors.surface, 0.95), textShadowOffset: { width: 0, height: 1 }, textShadowRadius: 12,
-  },
+  introEyebrow: { color: colors.intro, fontFamily: typography.bodyBold, fontSize: 11.5, letterSpacing: 2.4 },
+  // Aggancio: breve, grande e leggibile.
+  hook: { color: colors.textWarmSecondary, fontFamily: typography.bodyMedium, fontSize: 17, lineHeight: 27, letterSpacing: 0.1 },
   ctaRow: { flexDirection: "row", alignItems: "stretch", gap: spacing.sm + 2 },
   cta: { flex: 1 },
 }));

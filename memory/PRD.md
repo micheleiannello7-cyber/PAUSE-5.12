@@ -323,3 +323,8 @@ Disabilitati per scelta utente: TTS reale e Stripe (codice presente).
 - backend/.env: aggiunti EMERGENT_LLM_KEY, INTEGRATION_PROXY_URL. Backend seed OK (12 categorie, 437 storie). Preview live (intro PAUSE).
 - Cache-clear all'avvio: rifiutato dall'utente, NON implementato.
 - Analisi peso APK: assets frontend solo 2.3MB; il peso è tutto nelle librerie native (expo-video, expo-audio, reanimated/worklets, webview, blur, view-shot, 3 famiglie icone, symbols) + APK universale.
+
+## Lettore (deep-dive) — Sep 2026 (fork)
+- Presentazione ridisegnata: copertina a tutta larghezza (~40% schermo) con titolo in basso su sfumatura → scheda opaca con Introduzione, scheda info a 3 colonne (tipo, categoria, tempo) → CTA Leggi / Ascolta (premium). Tutto sopra la piega su 390×844.
+- Copertina→sfondo: nuovo `ReaderCoverBackdrop` (solo transform translate/scale + opacità, niente layout animato né BlurView) al posto di `ReaderMorphCover` (rimosso).
+- Paging capitoli: `snapToOffsets` + `disableIntervalMomentum` + `decelerationRate="fast"` con posizioni di riposo centrate per sezione (inizio sotto la barra se più alta dello schermo, più punto di riposo alla fine); rilascio lento oltre il 28% del tratto → completa lo scroll alla sezione vicina (worklet onEndDrag). Rimosso minHeight a schermo intero dei capitoli.

@@ -55,13 +55,13 @@ export function stripStepPrefix(title: string): string {
 }
 
 export function ChapterSection({
-  chapter, story, eyebrow, minHeight, onLayout,
-}: { chapter: Chapter; story: Story; eyebrow: string; minHeight?: number; onLayout: (e: LayoutChangeEvent) => void }) {
+  chapter, story, eyebrow, onLayout,
+}: { chapter: Chapter; story: Story; eyebrow: string; onLayout: (e: LayoutChangeEvent) => void }) {
   const styles = useStyles();
   const { colors } = useTheme();
   const glow = chapter.glow_color || colors.cyan;
   return (
-    <View style={[styles.section, minHeight ? { minHeight } : null]} onLayout={onLayout} testID={`deep-dive-page-chapter-${chapter.number}`}>
+    <View style={styles.section} onLayout={onLayout} testID={`deep-dive-page-chapter-${chapter.number}`}>
       <SectionDivider color={glow} />
       <View style={styles.eyebrowRow}>
         <View style={[styles.dot, { backgroundColor: glow, boxShadow: `0px 0px 12px ${withAlpha(glow, 0.7)}` as any }]} />
